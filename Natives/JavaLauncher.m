@@ -1982,8 +1982,20 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
             // 导致 MobileGlues 用不安全默认值初始化 GL 上下文可能崩溃。现对齐 Ynnyny 始终选 ANGLE。
             // MobileGlues 仍保留为手动选项（用户可在设置中显式选择）。
             glLibName = RENDERER_NAME_MTL_ANGLE;
+            // Redesign: Minecraft 26.x's new renderer rejects ANGLE ("glGetError mismatch")
+            // and then falls back to Vulkan/MoltenVK, which can't compile its shaders.
+            // MobileGlues is the renderer that actually runs 26.x on iOS, so Auto uses it there.
+            NSString *autoMcVersionId = nil;
+            if ([launchTarget isKindOfClass:NSDictionary.class]) {
+                autoMcVersionId = [launchTarget[@"id"] description];
+            } else if ([launchTarget isKindOfClass:NSString.class]) {
+                autoMcVersionId = (NSString *)launchTarget;
+            }
+            if (ame98_mcMajorFromVersionId(autoMcVersionId) >= 26) {
+                glLibName = "libmobileglues.dylib";
+            }
             setenv("AMETHYST_RENDERER", glLibName, 1);
-            NSLog(@"[JavaLauncher] Auto renderer resolved to %s (always ANGLE)", glLibName);
+            NSLog(@"[JavaLauncher] Auto renderer resolved to %s", glLibName);
         }
         if (strcmp(glLibName, RENDERER_NAME_VULKAN) == 0) {
             // 对齐 Ynnyny 仓库：Vulkan 模式下 OpenGL 回退库使用 MobileGlues

@@ -80,6 +80,16 @@ NSString * const AmeTabTappedNotification = @"AmeTabTapped";   // ★ [ROOTTAB]
 
 @end
 
+/// Tab item that never shows a title: UIKit copies a view controller's title onto
+/// its tab item whenever the title changes, so ignore every title set.
+@interface AMEIconOnlyTabBarItem : UITabBarItem
+@end
+@implementation AMEIconOnlyTabBarItem
+- (void)setTitle:(NSString *)title {
+    [super setTitle:nil];
+}
+@end
+
 @implementation AmeRootTabController
 
 /// 页面统一包进导航控制器:页面里若自己 push/present 也能正常工作
@@ -116,9 +126,13 @@ static UIViewController *AmeWrapInNav(UIViewController *vc) {
 
         // ★ [ROOTTAB-FIX] tabBarItem 必须设在【内容 VC】上:导航控制器会用它 push 栈顶页面的
         //   item 覆盖自己那个 —— 上一版设在 nav 上 ⇒ 第 3 个标签显示成了"会话列表"。
-        content.tabBarItem = [[UITabBarItem alloc] initWithTitle:items[i][@"t"]
-                                                          image:[UIImage systemImageNamed:items[i][@"i"]]
-                                                  selectedImage:nil];
+        // Redesign: icons only (the title stays as the VoiceOver label).
+        AMEIconOnlyTabBarItem *tabItem = [[AMEIconOnlyTabBarItem alloc] initWithTitle:nil
+                                                                                 image:[UIImage systemImageNamed:items[i][@"i"]]
+                                                                         selectedImage:nil];
+        tabItem.accessibilityLabel = items[i][@"t"];
+        tabItem.largeContentSizeImage = [UIImage systemImageNamed:items[i][@"i"]];
+        content.tabBarItem = tabItem;
         content.tabBarItem.tag = i;
 
         UIViewController *vc = AmeWrapInNav(content);   // ★ 全部包 nav:页面内要 push 子流程(见 RootVC:719 注释)

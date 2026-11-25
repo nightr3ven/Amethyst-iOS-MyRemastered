@@ -174,25 +174,44 @@ static NSString *const kIndexFile = @".ame-modrinth.json";   // projectId -> fil
 
 + (BOOL)isProjectInstalled:(NSString *)projectId kind:(AMEModrinthKind)kind instance:(AMEInstanceInfo *)instance {
     NSString *folder = [instance folderForKind:kind];
-    NSString *file = [self indexForFolder:folder][projectId];
-    return file.length && [NSFileManager.defaultManager fileExistsAtPath:[folder stringByAppendingPathComponent:file]];
+    id file = [self indexForFolder:folder][projectId];
+    if (![file isKindOfClass:NSString.class]) return NO;
+    return [(NSString *)file length] && [NSFileManager.defaultManager fileExistsAtPath:[folder stringByAppendingPathComponent:file]];
 }
 
 + (void)installProject:(NSString *)project kind:(AMEModrinthKind)kind instance:(AMEInstanceInfo *)instance
             completion:(void (^)(NSArray<NSString *> *, NSError *))completion {
     NSMutableArray<NSString *> *installed = [NSMutableArray array];
     NSMutableSet<NSString *> *seen = [NSMutableSet set];
-    [self installOne:project kind:kind instance:instance depth:0 seen:seen installed:installed completion:^(NSError *error) {
+    [self installOne:project pinnedVersion:nil kind:kind instance:instance depth:0 seen:seen installed:installed completion:^(NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(error ? nil : installed, error);
         });
     }];
 }
 
-+ (void)installOne:(NSString *)project kind:(AMEModrinthKind)kind instance:(AMEInstanceInfo *)instance depth:(NSInteger)depth
+// Some mods require an exact version of another (Iris pins the Sodium it was built
+// against; a newer Sodium declares it "breaks" that Iris). Those pins are honoured
+// and remembered per folder, so installing that dependency directly later keeps
+// the pinned version instead of upgrading into a crash.
++ (NSMutableDictionary *)pinsInIndex:(NSMutableDictionary *)index {
+    NSMutableDictionary *pins = [index[@"__pins"] isKindOfClass:NSDictionary.class] ? [index[@"__pins"] mutableCopy] : [NSMutableDictionary dictionary];
+    return pins;
+}
+
++ (void)installOne:(NSString *)project pinnedVersion:(nullable NSString *)pinnedVersion kind:(AMEModrinthKind)kind instance:(AMEInstanceInfo *)instance depth:(NSInteger)depth
               seen:(NSMutableSet *)seen installed:(NSMutableArray *)installed completion:(void (^)(NSError *_Nullable))completion {
     if ([seen containsObject:project] || depth > 6) { completion(nil); return; }
     [seen addObject:project];
+
+    if (pinnedVersion.length) {
+        NSURL *url = [self urlWithPath:[NSString stringWithFormat:@"/version/%@", pinnedVersion] query:@{}];
+        [self getJSON:url completion:^(NSDictionary *version, NSError *error) {
+            if (error || ![version isKindOfClass:NSDictionary.class]) { completion(error); return; }
+            [self installVersion:version pinned:YES kind:kind instance:instance depth:depth seen:seen installed:installed completion:completion];
+        }];
+        return;
+    }
 
     NSMutableDictionary *query = [NSMutableDictionary dictionary];
     NSArray *loaders = [self loadersForKind:kind instance:instance];
@@ -210,16 +229,41 @@ static NSString *const kIndexFile = @".ame-modrinth.json";   // projectId -> fil
                 NSLocalizedDescriptionKey: [NSString stringWithFormat:@"There's no version of this for %@.", what]}]);
             return;
         }
+        NSString *projectId = versions.firstObject[@"project_id"] ?: project;
+        // Another installed mod needs a specific version of this one: use that.
+        NSString *pin = [self pinsInIndex:[self indexForFolder:[instance folderForKind:kind]]][projectId];
+        if ([pin isKindOfClass:NSString.class] && pin.length) {
+            for (NSDictionary *v in versions) {
+                if ([v[@"id"] isEqualToString:pin]) {
+                    [self installVersion:v pinned:YES kind:kind instance:instance depth:depth seen:seen installed:installed completion:completion];
+                    return;
+                }
+            }
+        }
         // Prefer the newest release, else the newest of anything.
         NSDictionary *version = versions.firstObject;
         for (NSDictionary *v in versions) {
             if ([v[@"version_type"] isEqualToString:@"release"]) { version = v; break; }
         }
+        [self installVersion:version pinned:NO kind:kind instance:instance depth:depth seen:seen installed:installed completion:completion];
+    }];
+}
+
++ (void)installVersion:(NSDictionary *)version pinned:(BOOL)pinned kind:(AMEModrinthKind)kind instance:(AMEInstanceInfo *)instance depth:(NSInteger)depth
+                  seen:(NSMutableSet *)seen installed:(NSMutableArray *)installed completion:(void (^)(NSError *_Nullable))completion {
+    {
         NSArray *files = version[@"files"];
         NSDictionary *file = files.firstObject;
         for (NSDictionary *f in files) if ([f[@"primary"] boolValue]) { file = f; break; }
-        NSString *projectId = version[@"project_id"] ?: project;
-        if ([self isProjectInstalled:projectId kind:kind instance:instance] && depth > 0) { completion(nil); return; }
+        NSString *projectId = version[@"project_id"] ?: @"";
+        NSString *versionId = version[@"id"] ?: @"";
+        NSMutableDictionary *currentIndex = [self indexForFolder:[instance folderForKind:kind]];
+        NSDictionary *versionsIdx = [currentIndex[@"__versions"] isKindOfClass:NSDictionary.class] ? currentIndex[@"__versions"] : @{};
+        if ([self isProjectInstalled:projectId kind:kind instance:instance] && [versionsIdx[projectId] isEqual:versionId]) {
+            completion(nil);   // exactly this version is already there
+            return;
+        }
+        if ([self isProjectInstalled:projectId kind:kind instance:instance] && depth > 0 && !pinned) { completion(nil); return; }
 
         NSString *folder = [instance folderForKind:kind];
         [NSFileManager.defaultManager createDirectoryAtPath:folder withIntermediateDirectories:YES attributes:nil error:nil];
@@ -243,33 +287,47 @@ static NSString *const kIndexFile = @".ame-modrinth.json";   // projectId -> fil
             [fm moveItemAtURL:location toURL:[NSURL fileURLWithPath:dest] error:&moveError];
             if (moveError) { completion(moveError); return; }
             index[projectId] = fileName;
+            NSMutableDictionary *versionsIndex = [index[@"__versions"] isKindOfClass:NSDictionary.class] ? [index[@"__versions"] mutableCopy] : [NSMutableDictionary dictionary];
+            versionsIndex[projectId] = versionId;
+            index[@"__versions"] = versionsIndex;
             [self saveIndex:index forFolder:folder];
             @synchronized (installed) { [installed addObject:fileName]; }
 
             // Required dependencies (mods only), one after another.
-            NSMutableArray<NSString *> *deps = [NSMutableArray array];
+            NSMutableArray<NSDictionary *> *deps = [NSMutableArray array];
             if (kind == AMEModrinthKindMod) {
+                NSMutableDictionary *pins = [self pinsInIndex:index];
                 for (NSDictionary *d in version[@"dependencies"]) {
+                    if (![d[@"dependency_type"] isEqualToString:@"required"]) continue;
                     NSString *pid = d[@"project_id"];
-                    if ([d[@"dependency_type"] isEqualToString:@"required"] && [pid isKindOfClass:NSString.class]) [deps addObject:pid];
+                    NSString *vid = [d[@"version_id"] isKindOfClass:NSString.class] ? d[@"version_id"] : nil;
+                    if (![pid isKindOfClass:NSString.class] && vid == nil) continue;
+                    if (vid && [pid isKindOfClass:NSString.class]) pins[pid] = vid;
+                    [deps addObject:@{@"project": [pid isKindOfClass:NSString.class] ? pid : vid, @"version": vid ?: @""}];
+                }
+                if (pins.count) {
+                    index[@"__pins"] = pins;
+                    [self saveIndex:index forFolder:folder];
                 }
             }
             [self installDependencies:deps kind:kind instance:instance depth:depth seen:seen installed:installed completion:completion];
         }] resume];
-    }];
+    }
 }
 
-+ (void)installDependencies:(NSMutableArray<NSString *> *)deps kind:(AMEModrinthKind)kind instance:(AMEInstanceInfo *)instance depth:(NSInteger)depth
++ (void)installDependencies:(NSMutableArray<NSDictionary *> *)deps kind:(AMEModrinthKind)kind instance:(AMEInstanceInfo *)instance depth:(NSInteger)depth
                        seen:(NSMutableSet *)seen installed:(NSMutableArray *)installed completion:(void (^)(NSError *_Nullable))completion {
     if (deps.count == 0) { completion(nil); return; }
-    NSString *next = deps.firstObject;
+    NSDictionary *next = deps.firstObject;
     [deps removeObjectAtIndex:0];
-    if ([self isProjectInstalled:next kind:kind instance:instance]) {
+    NSString *project = next[@"project"];
+    NSString *version = [next[@"version"] length] ? next[@"version"] : nil;
+    if (!version && [self isProjectInstalled:project kind:kind instance:instance]) {
         [self installDependencies:deps kind:kind instance:instance depth:depth seen:seen installed:installed completion:completion];
         return;
     }
-    [self installOne:next kind:kind instance:instance depth:depth + 1 seen:seen installed:installed completion:^(NSError *error) {
-        // A missing optional-looking dependency shouldn't undo the main install; keep going.
+    [self installOne:project pinnedVersion:version kind:kind instance:instance depth:depth + 1 seen:seen installed:installed completion:^(NSError *error) {
+        // A dependency failing shouldn't undo the main install; keep going.
         [self installDependencies:deps kind:kind instance:instance depth:depth seen:seen installed:installed completion:completion];
     }];
 }
