@@ -60,6 +60,9 @@ CGPoint lastVirtualMousePoint;
 
 - (void)actionOpenNavigationMenu;
 - (void)didSelectMenuItem:(int)item;
+- (void)toggleSoftKeyboard;
+- (void)showSoftKeyboard;
+- (void)hideSoftKeyboard;
 - (void)viewWillTransitionToSize_Navigation:(CGRect)frame;
 // FCL 风格游戏内菜单动作
 - (void)actionToggleControls;        // 隐藏/显示控制按钮

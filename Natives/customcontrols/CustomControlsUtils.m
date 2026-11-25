@@ -64,6 +64,20 @@ static int computeStrokeWidth(float widthInPercent, float width, float height) {
     return (int) ((maxSize / 2) * (widthInPercent / 100));
 }
 
+// Normalize the layout to v8 from v6/7 (ported from Amethyst 0e98ca0)
+void convertV6_7Layout(NSMutableDictionary* dict) {
+    for (NSMutableDictionary *data in (NSMutableArray *)dict[@"mJoystickDataList"]) {
+        if ([data[@"height"] floatValue] > [data[@"width"] floatValue]) {
+            // Make the size square, adjust the dynamic position related to height
+            CGFloat ratio = [data[@"height"] floatValue] / [data[@"width"] floatValue];
+            data[@"dynamicX"] = [data[@"dynamicX"] stringByReplacingOccurrencesOfString:@"${height}" withString:[NSString stringWithFormat:@"(%f * ${height})", ratio]];
+            data[@"dynamicY"] = [data[@"dynamicY"] stringByReplacingOccurrencesOfString:@"${height}" withString:[NSString stringWithFormat:@"(%f * ${height})", ratio]];
+            data[@"height"] = data[@"width"];
+        }
+    }
+    dict[@"version"] = @(8);
+}
+
 void convertV3_4Layout(NSMutableDictionary* dict) {
     // Convert the layout stroke width to the V5 form
     for (NSMutableDictionary *button in (NSMutableArray *)dict[@"mControlDataList"]) {
@@ -185,6 +199,8 @@ BOOL convertLayoutIfNecessary(NSMutableDictionary* dict) {
             break;
         case 6:
         case 7:
+            convertV6_7Layout(dict);
+        case 8:
             break;
         default:
             showDialog(localize(@"custom_controls.control_menu.save.error.json", nil), [NSString stringWithFormat:localize(@"custom_controls.error.incompatible", nil), version]);
@@ -195,8 +211,34 @@ BOOL convertLayoutIfNecessary(NSMutableDictionary* dict) {
 
 void generateAndSaveDefaultControl() {
     NSString *defaultPath = [NSString stringWithFormat:@"%s/controlmap/default.json", getenv("POJAV_HOME")];
-    if ([NSFileManager.defaultManager fileExistsAtPath:defaultPath]) {
+    NSString *builtinPath = [NSBundle.mainBundle pathForResource:@"default_controls" ofType:@"json"];
+    NSFileManager *fm = NSFileManager.defaultManager;
+
+    // Redesign: replace the old generated arrow-key layout (v5, "▲" buttons) with
+    // the modern joystick layout once; keep the old one as classic.json.
+    if (builtinPath && [fm fileExistsAtPath:defaultPath]) {
+        NSDictionary *existing = parseJSONFromFile(defaultPath);
+        BOOL oldGenerated = [existing[@"version"] intValue] < 8;
+        if (oldGenerated) {
+            BOOL hasArrow = NO;
+            for (NSDictionary *b in existing[@"mControlDataList"]) {
+                if ([b[@"name"] isEqual:@"▲"]) { hasArrow = YES; break; }
+            }
+            oldGenerated = hasArrow;
+        }
+        if (oldGenerated) {
+            NSString *classic = [defaultPath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"classic.json"];
+            [fm removeItemAtPath:classic error:nil];
+            [fm moveItemAtPath:defaultPath toPath:classic error:nil];
+        }
+    }
+    if ([fm fileExistsAtPath:defaultPath]) {
         return;
+    }
+    // Modern layout (joystick + drawer, from Amethyst) shipped in the app bundle.
+    if (builtinPath) {
+        [fm createDirectoryAtPath:defaultPath.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
+        if ([fm copyItemAtPath:builtinPath toPath:defaultPath error:nil]) return;
     }
 
     // Generate a v2.7 control

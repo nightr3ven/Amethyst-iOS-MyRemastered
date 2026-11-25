@@ -1,3 +1,4 @@
+#import "AMESettingsViewController.h"
 #import "CustomControlsViewController.h"
 #import "LauncherPreferences.h"
 #import "LauncherPreferencesViewController.h"
@@ -41,26 +42,27 @@ static const void *kMenuDimViewKey = &kMenuDimViewKey;
 - (void)initCategory_Navigation {
     // FCL 安卓风格：菜单从底部弹出，游戏画面不缩小
     // 参照 FCL GameMenu.java / GameMenuView.kt 的底部弹出菜单样式
+    // Redesign: most-used actions first, Quit last (red, confirms first).
+    // Order must match -didSelectMenuItem: and AMEGameMenuSymbols below.
     self.menuArray = @[
-        @"game.menu.force_close",          // 强制关闭
-        @"game.menu.log_output",            // 日志输出
-        @"game.menu.custom_controls",       // 按键布局编辑
-        // ★ [MP-RESTORE] 恢复「联机 / 多人游戏」菜单项（原 index 3 ⇒ 其后各项 index +1）
-        @"game.menu.multiplayer",           // 联机（陶瓦联机 Terracotta，右上角可切 ZeroTier）
-        @"game.menu.toggle_stats",          // FPS/内存显示开关
-        @"game.menu.toggle_controls",       // 隐藏/显示控制按钮
-        @"game.menu.toggle_virtual_mouse",  // 虚拟鼠标开关
-        @"game.menu.toggle_keyboard",       // 游戏内键盘
-        @"game.menu.resolution",            // 分辨率调整
-        @"Settings"                         // 设置
+        @"Keyboard",
+        @"Hide controls",
+        @"Virtual mouse",
+        @"Edit controls",
+        @"Performance stats",
+        @"Resolution",
+        @"Multiplayer",
+        @"Game log",
+        @"Settings",
+        @"Quit game",
     ];
 
     // FCL 风格：菜单从底部弹出，宽度为屏幕宽度的 70%（居中），最大高度为屏幕高度的 60%
     CGFloat screenWidth = [ScreenUtils screenSize].width;
     CGFloat screenHeight = [ScreenUtils screenSize].height;
     CGFloat menuWidth = MIN(screenWidth * 0.7, 400);
-    CGFloat menuMaxHeight = screenHeight * 0.6;
-    CGFloat menuEstimatedHeight = self.menuArray.count * 48 + 16;
+    CGFloat menuMaxHeight = screenHeight * 0.85;
+    CGFloat menuEstimatedHeight = self.menuArray.count * 44 + 16;
     CGFloat menuHeight = MIN(menuEstimatedHeight, menuMaxHeight);
 
     self.menuView = [[UITableView alloc] initWithFrame:CGRectMake(
@@ -193,14 +195,14 @@ static const void *kMenuDimViewKey = &kMenuDimViewKey;
 }
 
 - (void)actionForceClose {
-    UIAlertController* alert = [UIAlertController alertControllerWithTitle:nil
-        message:localize(@"game.menu.confirm.force_close", nil)
+    UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Quit Minecraft?"
+        message:@"Unsaved progress since the last autosave will be lost. Use Save and Quit in the game's pause menu to save first."
         preferredStyle:UIAlertControllerStyleAlert];
 
-    UIAlertAction* cancelAction = [UIAlertAction actionWithTitle:localize(@"Cancel", nil) style:UIAlertActionStyleDefault handler:nil];
+    UIAlertAction* cancelAction = [UIAlertAction actionWithTitle:@"Keep playing" style:UIAlertActionStyleCancel handler:nil];
     [alert addAction:cancelAction];
 
-    UIAlertAction* okAction = [UIAlertAction actionWithTitle:localize(@"OK", nil) style:UIAlertActionStyleDestructive handler:^(UIAlertAction * action) {
+    UIAlertAction* okAction = [UIAlertAction actionWithTitle:@"Quit" style:UIAlertActionStyleDestructive handler:^(UIAlertAction * action) {
         // ★ [MP-RESTORE] 联机恢复：强制关闭前清理联机资源（否则残留 SOCKS5 代理/端口转发/
         //   ZeroTier 网络/AMETHYST_SOCKS5_PROXY/PLProfiles.serverIp ⇒ "存档关闭后端口仍在"）。
         @try {
@@ -244,8 +246,16 @@ static const void *kMenuDimViewKey = &kMenuDimViewKey;
 
 - (void)actionOpenPreferences {
     [self dismissMenu];
-    LauncherPreferencesViewController *vc = [[LauncherPreferencesViewController alloc] init];
-    [self presentViewController:vc animated:YES completion:nil];
+    AMESettingsViewController *settings = [[AMESettingsViewController alloc] init];
+    settings.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone
+                                                                                               target:self action:@selector(ame_dismissPresented)];
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:settings];
+    nav.modalPresentationStyle = UIModalPresentationPageSheet;
+    [self presentViewController:nav animated:YES completion:nil];
+}
+
+- (void)ame_dismissPresented {
+    [self dismissViewControllerAnimated:YES completion:nil];
 }
 
 /// 游戏内打开联机界面（陶瓦联机，与 HMCL/FCL/ZL2 互通）
@@ -280,15 +290,8 @@ static const void *kMenuDimViewKey = &kMenuDimViewKey;
     }
 }
 
-/// FCL 风格：打开/关闭游戏内键盘（对应 FCL open_quick_input / ZL2 input_method）
 - (void)actionToggleKeyboard {
-    if (self.inputTextField.isFirstResponder) {
-        [self.inputTextField resignFirstResponder];
-        self.inputTextField.alpha = 1.0f;
-    } else {
-        [self.inputTextField becomeFirstResponder];
-        self.inputTextField.text = @" ";
-    }
+    [self toggleSoftKeyboard];
 }
 
 /// FCL/ZL2 风格：调整游戏分辨率（对应 FCL window_scale / ZL2 resolutionRatio）
@@ -363,14 +366,26 @@ static const void *kMenuDimViewKey = &kMenuDimViewKey;
         cell.selectedBackgroundView = selectedBg;
     }
 
-    cell.textLabel.text = localize(self.menuArray[indexPath.row], nil);
+    static NSArray<NSString *> *symbols;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        symbols = @[@"keyboard", @"eye.slash", @"cursorarrow", @"slider.horizontal.3", @"gauge.with.dots.needle.33percent",
+                    @"aspectratio", @"person.2", @"doc.plaintext", @"gearshape", @"xmark.circle"];
+    });
+    BOOL quit = indexPath.row == (NSInteger)self.menuArray.count - 1;
+    cell.textLabel.text = self.menuArray[indexPath.row];
+    cell.textLabel.textColor = quit ? UIColor.systemRedColor : UIColor.whiteColor;
+    NSString *symbol = indexPath.row < (NSInteger)symbols.count ? symbols[indexPath.row] : nil;
+    cell.imageView.image = symbol ? [UIImage systemImageNamed:symbol] : nil;
+    cell.imageView.tintColor = quit ? UIColor.systemRedColor : [UIColor colorWithWhite:1 alpha:0.85];
+    if (indexPath.row == 1) cell.textLabel.text = self.toggleHidden ? @"Show controls" : @"Hide controls";
     return cell;
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     // 修复：行高使用固定值 48pt，不随屏幕缩放
     // 原 [ScreenUtils sp:48] 在 iPad 上会放大到 96pt 导致菜单项过高
-    return 48;
+    return 44;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -379,39 +394,46 @@ static const void *kMenuDimViewKey = &kMenuDimViewKey;
 }
 
 - (void)didSelectMenuItem:(int)item {
-    // ★ [MP-RESTORE] case 下标与 menuArray 一一对应（已恢复原 index 3 = 联机/多人游戏）。
+    // Order matches self.menuArray (see -initCategory_Navigation).
     switch (item) {
-        case 0: // 强制关闭
-            [self actionForceClose];
+        case 0: // Keyboard
+            [self dismissMenu];
+            [self actionToggleKeyboard];
             break;
-        case 1: // 日志输出
-            [self.logOutputView actionToggleLogOutput];
+        case 1: // Hide / show controls
+            [self dismissMenu];
+            [self actionToggleControls];
             break;
-        case 2: // 按键布局编辑
+        case 2: // Virtual mouse
+            [self dismissMenu];
+            [self actionToggleVirtualMouse];
+            break;
+        case 3: // Edit controls
             [self actionOpenCustomControls];
             break;
-        case 3: // 联机（陶瓦联机 Terracotta，右上角可切 ZeroTier）
-            [self actionOpenMultiplayer];
-            break;
-        case 4: // FPS/内存显示开关
+        case 4: // Performance stats
+            [self dismissMenu];
             if ([self.gameMenuOverlay isKindOfClass:[GameMenuOverlayView class]]) {
                 [(GameMenuOverlayView *)self.gameMenuOverlay toggleStatsLabel];
             }
             break;
-        case 5: // 隐藏/显示控制按钮
-            [self actionToggleControls];
-            break;
-        case 6: // 虚拟鼠标开关
-            [self actionToggleVirtualMouse];
-            break;
-        case 7: // 游戏内键盘
-            [self actionToggleKeyboard];
-            break;
-        case 8: // 分辨率调整
+        case 5: // Resolution
+            [self dismissMenu];
             [self actionAdjustResolution];
             break;
-        case 9: // 设置
+        case 6: // Multiplayer
+            [self actionOpenMultiplayer];
+            break;
+        case 7: // Game log
+            [self dismissMenu];
+            [self.logOutputView actionToggleLogOutput];
+            break;
+        case 8: // Settings
             [self actionOpenPreferences];
+            break;
+        case 9: // Quit game (asks first)
+            [self dismissMenu];
+            [self actionForceClose];
             break;
     }
 }
@@ -421,8 +443,8 @@ static const void *kMenuDimViewKey = &kMenuDimViewKey;
     CGFloat screenWidth = frame.size.width;
     CGFloat screenHeight = frame.size.height;
     CGFloat menuWidth = MIN(screenWidth * 0.7, 400);
-    CGFloat menuMaxHeight = screenHeight * 0.6;
-    CGFloat menuEstimatedHeight = self.menuArray.count * 48 + 16;
+    CGFloat menuMaxHeight = screenHeight * 0.85;
+    CGFloat menuEstimatedHeight = self.menuArray.count * 44 + 16;
     CGFloat menuHeight = MIN(menuEstimatedHeight, menuMaxHeight);
 
     if (!self.menuView.hidden) {
