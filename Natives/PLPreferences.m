@@ -263,7 +263,7 @@ NSString *const PREF_MOD_MIRROR = @"general.mod_mirror";
             // 默认值沿用本工程既有习惯，保证升级零行为变化）；开启 = 逐版本隔离到
             // <实例根>/versions/<版本 id>/。单版本可在「编辑配置」页用 versionIsolation 覆盖。
             // 放在 global 段（不可被实例偏好覆盖），与 game_directory 同层。
-            @"version_isolation": @NO,
+            @"version_isolation": @YES,   // redesign: each version keeps its own mods/config/saves
             @"hidden_sidebar": @(realUIIdiom == UIUserInterfaceIdiomPhone),
             @"appicon": @"AppIcon-Light",
             // ★ [UI-LAYOUT] 遗留键：布局已改为按设备自动判定（iPhone⇒标准 / iPad⇒卡片），SceneDelegate 不再读它。

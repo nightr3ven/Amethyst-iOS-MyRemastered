@@ -1966,6 +1966,30 @@ void amePCLMigrateVersionIsolationOnce(void) {
     NSLog(@"★ [VER-ISOLATE-PCL] 版本隔离一次性迁移完成（哨兵 %@）", kAmePCLVersionIsolationMigrated);
 }
 
+// Redesign: every version gets its own mods/config/saves by default.
+// Runs once. Only flips the global default when nothing would be "lost" from
+// view, i.e. the shared mods folder is empty; existing setups that already keep
+// mods in the shared folder are left as they are.
+void ameEnableIsolationByDefaultOnce(void) {
+    static NSString *const kDone = @"internal.ame_isolation_default_v1";
+    if ([getPrefObject(kDone) boolValue]) return;
+
+    BOOL sharedModsInUse = NO;
+    NSString *root = ameVIInstanceRoot();
+    if (root.length > 0) {
+        NSString *mods = [root stringByAppendingPathComponent:@"mods"];
+        for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:mods error:nil]) {
+            if (![name hasPrefix:@"."]) { sharedModsInUse = YES; break; }
+        }
+    }
+    if (!sharedModsInUse) {
+        setPrefBool(kAmePCLVersionIsolationPref, YES);
+    }
+    setPrefObject(kDone, @YES);
+    NSLog(@"[REDESIGN] isolation default %@ (shared mods in use: %d)",
+          sharedModsInUse ? @"left unchanged" : @"turned on", sharedModsInUse);
+}
+
 // ★ [VER-ISOLATE-MIGRATE] ====================================================
 // 共享游戏根绝对路径解析（迁移的"源根"）。只解析路径，不做任何搬动。
 // POJAV_GAME_DIR 由 init_setupMultiDir() 设置（= POJAV_HOME/instances/<实例>），

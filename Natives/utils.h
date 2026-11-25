@@ -565,6 +565,9 @@ NSString *amePCLVersionGameDirAbsolute(NSDictionary *prof, NSString *concreteVer
 // 把"升级前已手工隔离过"的 profile（gameDir 指向 versions/*，或对应版本目录下
 // 已有 mods/saves）显式写成 versionIsolation=@"1"，使其在设置页可见、可回退。
 void amePCLMigrateVersionIsolationOnce(void);
+/// Redesign: turn per-version isolation on by default once (only if the shared
+/// mods folder is empty, so nobody's existing mods disappear from view).
+void ameEnableIsolationByDefaultOnce(void);
 
 // ★ [VER-ISOLATE-MIGRATE] ====================================================
 // 实例【共享游戏根】绝对路径（= POJAV_GAME_DIR；不可得时回退 ameVIInstanceRoot()）。
