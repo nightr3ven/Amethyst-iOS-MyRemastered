@@ -17,6 +17,10 @@ typedef void (^SetPreferenceBlock)(NSString *, NSString *, id);
 @property(nonatomic) NSArray<NSArray<NSDictionary*>*>* prefContents;
 @property(nonatomic) BOOL prefDetailVisible;
 
+/// Redesign: when YES, sections have no collapsible title row at index 0; every
+/// row is an item and all sections are always expanded (plain grouped list).
+@property(nonatomic) BOOL noSectionHeaderRows;
+
 /// 搜索功能：是否启用搜索栏（子类在 viewDidLoad 设置 YES 启用）
 @property(nonatomic) BOOL searchEnabled;
 /// 当前搜索关键词（仅读，由 searchController 内部更新）

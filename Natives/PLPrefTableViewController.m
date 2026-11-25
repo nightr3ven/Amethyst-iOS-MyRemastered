@@ -94,7 +94,7 @@
     for (int s = 0; s < self.prefContents.count; s++) {
         NSArray *section = self.prefContents[s];
         // 第 0 项是 section 头，跳过
-        for (int r = (self.prefSections ? 1 : 0); r < section.count; r++) {
+        for (int r = (self.prefSections && !self.noSectionHeaderRows ? 1 : 0); r < section.count; r++) {
             NSDictionary *item = section[r];
             NSString *title = item[@"title"];
             if (!title) {
@@ -140,7 +140,7 @@
     // FIXME: any cheaper operations?
     NSMutableArray *indexPaths = [[NSMutableArray alloc] init];
     for (int section = 0; section < self.prefContents.count; section++) {
-        if (!self.prefSectionsVisibility[section].boolValue) {
+        if (!self.noSectionHeaderRows && !self.prefSectionsVisibility[section].boolValue) {
             continue;
         }
         for (int row = 0; row < self.prefContents[section].count; row++) {
@@ -170,7 +170,7 @@
     if (self.filteredItems) {
         return self.filteredItems.count;
     }
-    if (self.prefSectionsVisibility[section].boolValue) {
+    if (self.noSectionHeaderRows || self.prefSectionsVisibility[section].boolValue) {
         return self.prefContents[section].count;
     }
     return 1;
@@ -233,7 +233,7 @@
     cell.detailTextLabel.text = nil;
 
     NSString *key = item[@"key"];
-    if (indexPath.row == 0 && self.prefSections) {
+    if (indexPath.row == 0 && self.prefSections && !self.noSectionHeaderRows) {
         key = self.prefSections[indexPath.section];
         cell.selectionStyle = UITableViewCellSelectionStyleDefault;
         cell.textLabel.text = localize(([NSString stringWithFormat:@"preference.section.%@", key]), nil);
@@ -446,7 +446,7 @@
         return;
     }
 
-    if (indexPath.row == 0 && self.prefSections) {
+    if (indexPath.row == 0 && self.prefSections && !self.noSectionHeaderRows) {
         self.prefSectionsVisibility[indexPath.section] = @(![self.prefSectionsVisibility[indexPath.section] boolValue]);
         [tableView reloadSections:[NSIndexSet indexSetWithIndex:indexPath.section] withRowAnimation:UITableViewRowAnimationFade];
         return;

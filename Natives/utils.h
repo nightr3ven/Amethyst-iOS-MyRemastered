@@ -568,6 +568,8 @@ void amePCLMigrateVersionIsolationOnce(void);
 /// Redesign: turn per-version isolation on by default once (only if the shared
 /// mods folder is empty, so nobody's existing mods disappear from view).
 void ameEnableIsolationByDefaultOnce(void);
+/// Redesign: two-finger keyboard on, home bar hidden in game, no autocorrect (once).
+void ameApplyRedesignDefaultsOnce(void);
 
 // ★ [VER-ISOLATE-MIGRATE] ====================================================
 // 实例【共享游戏根】绝对路径（= POJAV_GAME_DIR；不可得时回退 ameVIInstanceRoot()）。

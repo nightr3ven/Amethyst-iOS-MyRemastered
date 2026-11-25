@@ -97,6 +97,7 @@ extern UIWindow *mainWindow;
     // on by default (see ameEnableIsolationByDefaultOnce) and is a plain switch in
     // each version's settings.
     ameEnableIsolationByDefaultOnce();
+    ameApplyRedesignDefaultsOnce();
 
     // ★ [MP-RESTORE] 联机恢复 —— lazy init：启动路径上**不**创建 TerracottaManager /
     //   不触发 terracotta_ios_start / 不起 ZeroTier 节点（避免把当年"启动崩溃"风险带回）。

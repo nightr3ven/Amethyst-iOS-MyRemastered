@@ -402,6 +402,7 @@ add_executable(AngelAuraAmethyst
   AMEDesign.m                  # shared look for the redesigned launcher
   AMEHomeViewController.m      # redesigned Home tab
   AMEInstancesViewController.m # redesigned Instances tab + instance page
+  AMESettingsViewController.m  # redesigned Settings tab (categories)
   ScreenUtils.m
 
   authenticator/BaseAuthenticator.m

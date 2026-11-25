@@ -1988,6 +1988,19 @@ void ameEnableIsolationByDefaultOnce(void) {
     setPrefObject(kDone, @YES);
     NSLog(@"[REDESIGN] isolation default %@ (shared mods in use: %d)",
           sharedModsInUse ? @"left unchanged" : @"turned on", sharedModsInUse);
+
+    ameApplyRedesignDefaultsOnce();
+}
+
+// Redesign: better defaults for settings that should just work, applied once to
+// existing installs too (new installs get them from PLPreferences defaults).
+void ameApplyRedesignDefaultsOnce(void) {
+    static NSString *const kDone = @"internal.ame_redesign_defaults_v1";
+    if ([getPrefObject(kDone) boolValue]) return;
+    setPrefBool(@"control.two_finger_keyboard", YES);
+    setPrefBool(@"debug.debug_hide_home_indicator", YES);
+    setPrefBool(@"debug.debug_auto_correction", NO);
+    setPrefObject(kDone, @YES);
 }
 
 // ★ [VER-ISOLATE-MIGRATE] ====================================================

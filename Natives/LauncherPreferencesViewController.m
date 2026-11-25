@@ -1464,18 +1464,20 @@
         ]
     ];
 
+    [self ameApplyCategoryFilter];
+
     [super viewDidLoad];
     // 适配自定义启动器背景：通过 BackgroundManager 将当前视图控制器透明化，
     // 让全局背景容器（图片/视频）能够透出显示。必须在 super viewDidLoad 之后调用，
     // 以确保 view 与 tableView 均已就绪。
-    [[BackgroundManager sharedManager] makeViewControllerTransparent:self];
+    if (!self.ameCategory) [[BackgroundManager sharedManager] makeViewControllerTransparent:self];
 
     // 顶部 Hero 卡片：App 名 + 版本 + 设备信息（参照 Air-Design v1.2 L3 大卡片规范）
     // 与搜索栏一起包装为 tableHeaderView，搜索栏在上、Hero 卡片在下
-    [self setupHeroHeader];
+    if (!self.ameCategory) [self setupHeroHeader];
 
     // Apply transparent background if global background is active
-    if ([[BackgroundManager sharedManager] hasBackground]) {
+    if (!self.ameCategory && [[BackgroundManager sharedManager] hasBackground]) {
         self.view.backgroundColor = [UIColor clearColor];
         self.tableView.backgroundColor = [UIColor clearColor];
         self.tableView.backgroundView = nil;
@@ -1970,7 +1972,7 @@
 
     // 判断是否为 section header 行（row 0 且有 prefSections）
     // section header 行不加彩色背景，保持原始样式（避免与组内项视觉混淆）
-    BOOL isSectionHeader = (indexPath.row == 0 && self.prefSections && !self.filteredItems);
+    BOOL isSectionHeader = (indexPath.row == 0 && self.prefSections && !self.filteredItems && !self.noSectionHeaderRows);
     if (isSectionHeader) {
         // section header：恢复默认 tint（不加背景），让图标保持系统默认外观
         iconView.backgroundColor = [UIColor clearColor];
@@ -2074,9 +2076,55 @@
     return [UIColor systemGrayColor];
 }
 
+#pragma mark - Redesign: category pages
+
+- (void)ameApplyCategoryFilter {
+    if (self.ameCategory.count == 0) return;
+    NSMutableArray<NSString *> *sections = [NSMutableArray array];
+    NSMutableArray<NSArray *> *contents = [NSMutableArray array];
+    for (NSArray *entry in self.ameCategory) {
+        NSString *sectionKey = entry.firstObject;
+        NSArray<NSString *> *keys = entry.count > 1 ? entry[1] : nil;
+        NSUInteger index = [self.prefSections indexOfObject:sectionKey];
+        if (index == NSNotFound || index >= self.prefContents.count) continue;
+        NSArray<NSDictionary *> *items = self.prefContents[index];
+
+        NSMutableArray<NSDictionary *> *kept = [NSMutableArray array];
+        if (keys) {
+            for (NSString *wanted in keys) {
+                for (NSUInteger i = 1; i < items.count; i++) {
+                    if ([items[i][@"key"] isEqualToString:wanted]) { [kept addObject:items[i]]; break; }
+                }
+            }
+        } else if (items.count > 1) {
+            [kept addObjectsFromArray:[items subarrayWithRange:NSMakeRange(1, items.count - 1)]];
+        }
+        if (kept.count == 0) continue;
+        [sections addObject:sectionKey];
+        [contents addObject:kept];
+    }
+    self.prefSections = sections;
+    self.prefContents = contents;
+    self.noSectionHeaderRows = YES;
+    self.prefSectionsVisible = YES;
+}
+
 #pragma mark - UITableView Delegate
 
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (!self.ameCategory || self.filteredItems || self.prefSections.count < 2) return nil;
+    NSString *key = [NSString stringWithFormat:@"preference.section.%@", self.prefSections[section]];
+    NSString *title = localize(key, nil);
+    return [title isEqualToString:key] ? self.prefSections[section].capitalizedString : title;
+}
+
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (self.ameCategory) {
+        if (self.filteredItems) return nil;
+        NSString *footerKey = [NSString stringWithFormat:@"preference.section.footer.%@", self.prefSections[section]];
+        NSString *footer = localize(footerKey, nil);
+        return (footer.length == 0 || [footer isEqualToString:footerKey] || [footer isEqualToString:@" "]) ? nil : footer;
+    }
     if (section == 0) { // Add to general section
         NSString *versionString = [NSString stringWithFormat:@"Amethyst iOS Remastered %@\n%@ on %@ (%s)\nPID: %d",
             NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"],

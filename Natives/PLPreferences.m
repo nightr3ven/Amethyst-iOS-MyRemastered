@@ -132,6 +132,7 @@ NSString *const PREF_MOD_MIRROR = @"general.mod_mirror";
             //   键必须在此注册：否则 PLPreferences getter/setter 因键不存在而静默失败，
             //   设置页开关既读不出也存不下。
             @"menu_button_visible": @YES,
+            @"two_finger_keyboard": @YES,   // redesign: two-finger tap opens the keyboard
             @"gesture_hotbar": @YES,
             @"disable_haptics": @NO,
             @"slideable_hotbar": @NO,
@@ -292,9 +293,9 @@ NSString *const PREF_MOD_MIRROR = @"general.mod_mirror";
             // iOS 26 JS 脚本 JIT 开关（默认携带脚本）
             @"jit_enabler": @"auto",
             @"jit26_script_disable": @NO,
-            @"debug_hide_home_indicator": @NO,
+            @"debug_hide_home_indicator": @YES,   // redesign: fewer accidental swipes out of the game
             @"debug_ipad_ui": @(realUIIdiom == UIUserInterfaceIdiomPad),
-            @"debug_auto_correction": @YES,
+            @"debug_auto_correction": @NO,        // redesign: autocorrect mangles commands
             @"debug_show_layout_bounds": @NO,
             @"debug_show_layout_overlap": @NO
         }.mutableCopy;
