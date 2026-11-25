@@ -36,13 +36,22 @@ static uint64_t ame156_mach_ms(void) {
 @implementation TrackedTextField
 
 - (BOOL)resignFirstResponder {
-    // SDL 的 text-input 更新、IME 候选确定等带来的临时 resign 要求：
-    // 用户正在输入时不关标准键盘。显式键盘 toggle 由 SurfaceViewController
-    // 临时解除本标志后 resign，不受影响。
-    if (self.preventUnexpectedResign && self.isFirstResponder) {
+    // Only refuse a resign while an IME composition is in progress (e.g. picking
+    // a Chinese/Japanese candidate), which is what the original guard was for.
+    // Refusing every resign left the keyboard impossible to close except via the
+    // exact toggle that opened it.
+    if (self.preventUnexpectedResign && self.isFirstResponder && self.markedTextRange != nil) {
         return NO;
     }
     return [super resignFirstResponder];
+}
+
+- (void)dismissKeyboard {
+    BOOL guard = self.preventUnexpectedResign;
+    self.preventUnexpectedResign = NO;
+    [self unmarkText];
+    [super resignFirstResponder];
+    self.preventUnexpectedResign = guard;
 }
 
 - (void)sendMultiBackspaces:(int)times {

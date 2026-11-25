@@ -30,6 +30,7 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import "utils.h"
+#import "AMEKeyboardAccessoryView.h"
 #include "shader_cap_probe.h"   // ★ [SHADER-CAP] GL 能力探测/诚实上报/入口映射
 extern CALayer *Amethyst_SDL3RenderLayer(void);
 static void ame_applyLauncherResolutionToSDLLayer(void);
@@ -1564,9 +1565,56 @@ static bool ame_dispatchTextInputToMain(void (^work)(void)) {
     return true;
 }
 
+#pragma mark - Keyboard toolbar for SDL's text field
+
+static __weak UIResponder *ame_capturedFirstResponder = nil;
+
+@interface UIResponder (AMEFirstResponderCapture)
+- (void)ame_captureFirstResponder:(id)sender;
+@end
+
+@implementation UIResponder (AMEFirstResponderCapture)
+- (void)ame_captureFirstResponder:(id)sender {
+    ame_capturedFirstResponder = self;
+}
+@end
+
+static UIResponder *ame_currentFirstResponder(void) {
+    ame_capturedFirstResponder = nil;
+    [UIApplication.sharedApplication sendAction:@selector(ame_captureFirstResponder:)
+                                             to:nil from:nil forEvent:nil];
+    return ame_capturedFirstResponder;
+}
+
+// SDL shows its own hidden UITextField for MC 26.x text boxes. Give it the same
+// toolbar as Air's in-game keyboard, so there is always a visible way to close
+// it (and Esc/Tab/arrows) instead of relying on Return.
+static void ame_attachKeyboardToolbarToSDL(void *window) {
+    UIResponder *responder = ame_currentFirstResponder();
+    if (![responder isKindOfClass:UITextField.class]) return;
+    UITextField *field = (UITextField *)responder;
+    if ([field.inputAccessoryView isKindOfClass:AMEKeyboardAccessoryView.class]) return;
+    if ([NSStringFromClass(field.class) isEqualToString:@"TrackedTextField"]) return;
+
+    AMEKeyboardAccessoryView *accessory = [AMEKeyboardAccessoryView accessoryView];
+    accessory.onKey = ^(int glfwKey) {
+        CallbackBridge_nativeSendKey(glfwKey, 0, 1, 0);
+        CallbackBridge_nativeSendKey(glfwKey, 0, 0, 0);
+    };
+    accessory.onCharacter = ^(unichar character) {
+        CallbackBridge_nativeSendChar(character);
+    };
+    accessory.onDismiss = ^{
+        if (ame_real_StopTextInput != NULL) ame_real_StopTextInput(window);
+    };
+    field.inputAccessoryView = accessory;
+    [field reloadInputViews];
+}
+
 static bool ame_SDL_StartTextInput(void *window) {
     return ame_dispatchTextInputToMain(^{
         if (ame_real_StartTextInput != NULL) ame_real_StartTextInput(window);
+        ame_attachKeyboardToolbarToSDL(window);
     });
 }
 
@@ -1576,6 +1624,7 @@ static bool ame_SDL_StartTextInputWithProperties(void *window,
         if (ame_real_StartTextInputWithProperties != NULL) {
             ame_real_StartTextInputWithProperties(window, props);
         }
+        ame_attachKeyboardToolbarToSDL(window);
     });
 }
 

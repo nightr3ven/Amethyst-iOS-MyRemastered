@@ -38,6 +38,7 @@ extern bool ame_gl_surface_transposed(void);
 extern void *CallbackBridge_sdlWindowPtr(void);
 // ★ [MP-RESTORE] 联机恢复
 #import "MultiplayerManager.h"
+#import "AMEKeyboardAccessoryView.h"
 
 #include "glfw_keycodes.h"
 #include "utils.h"
@@ -1189,6 +1190,7 @@ static UIView *findSDL_uikitview(UIView *root);
     self.inputTextField.sendChar = ^(jchar keychar){ CallbackBridge_nativeSendChar(keychar); };
     self.inputTextField.sendCharMods = ^(jchar keychar, int mods){ CallbackBridge_nativeSendCharMods(keychar, mods); };
     self.inputTextField.sendKey = ^(int key, int scancode, int action, int mods) { CallbackBridge_nativeSendKey(key, scancode, action, mods); };
+    self.inputTextField.inputAccessoryView = [self makeKeyboardAccessory];
 
     self.swipeableButtons = [[NSMutableArray alloc] init];
 
@@ -2223,16 +2225,52 @@ static BOOL ame87_mcVersionRequiresTextureBuffer(NSString *mcVersionId) {
     }
 
     if (gestureRecognizer.state == UIGestureRecognizerStateBegan) {
-        if (self.inputTextField.isFirstResponder) {
-            self.inputTextField.preventUnexpectedResign = NO;
-            [self.inputTextField resignFirstResponder];
-            self.inputTextField.preventUnexpectedResign = YES;
-            self.inputTextField.alpha = 1.0f;
-        } else {
-            self.inputTextField.preventUnexpectedResign = YES;
-            [self.inputTextField becomeFirstResponder];
-            self.inputTextField.text = @" ";
+        [self toggleSoftKeyboard];
+    }
+}
+
+#pragma mark - Soft keyboard
+
+- (AMEKeyboardAccessoryView *)makeKeyboardAccessory {
+    AMEKeyboardAccessoryView *accessory = [AMEKeyboardAccessoryView accessoryView];
+    __weak typeof(self) weakSelf = self;
+    accessory.onKey = ^(int glfwKey) {
+        CallbackBridge_nativeSendKey(glfwKey, 0, 1, 0);
+        CallbackBridge_nativeSendKey(glfwKey, 0, 0, 0);
+        // Esc leaves chat/text screens in game, so the keyboard should go too.
+        if (glfwKey == GLFW_KEY_ESCAPE) {
+            [weakSelf hideSoftKeyboard];
         }
+    };
+    accessory.onCharacter = ^(unichar character) {
+        CallbackBridge_nativeSendChar(character);
+        CallbackBridge_nativeSendCharMods(character, 0);
+    };
+    accessory.onDismiss = ^{
+        [weakSelf hideSoftKeyboard];
+    };
+    return accessory;
+}
+
+- (void)showSoftKeyboard {
+    if (self.inputTextField.isFirstResponder) return;
+    self.inputTextField.preventUnexpectedResign = YES;
+    [self.inputTextField becomeFirstResponder];
+    self.inputTextField.text = @" ";
+}
+
+- (void)hideSoftKeyboard {
+    if (!self.inputTextField.isFirstResponder) return;
+    [self.inputTextField dismissKeyboard];
+    self.inputTextField.text = @" ";
+    self.inputTextField.alpha = 1.0f;
+}
+
+- (void)toggleSoftKeyboard {
+    if (self.inputTextField.isFirstResponder) {
+        [self hideSoftKeyboard];
+    } else {
+        [self showSoftKeyboard];
     }
 }
 
@@ -2769,6 +2807,11 @@ static btRawAXFunc btRawAXGet(void) {
     CallbackBridge_nativeSendKey(GLFW_KEY_ENTER, 0, 1, 0);
     CallbackBridge_nativeSendKey(GLFW_KEY_ENTER, 0, 0, 0);
     textField.text = @" ";
+    // Return sends the chat message / command and closes chat in game, so close
+    // the keyboard with it (matches the SDL keyboard, which has RETURN_KEY_HIDES_IME).
+    if (textField == self.inputTextField) {
+        [self hideSoftKeyboard];
+    }
     return YES;
 }
 
@@ -2782,16 +2825,7 @@ static btRawAXFunc btRawAXGet(void) {
             switch (keycode) {
                 case SPECIALBTN_KEYBOARD:
                     if (held == 0) {
-                        if (self.inputTextField.isFirstResponder) {
-                            self.inputTextField.preventUnexpectedResign = NO;
-                            [self.inputTextField resignFirstResponder];
-                            self.inputTextField.preventUnexpectedResign = YES;
-                            self.inputTextField.alpha = 1.0f;
-                        } else {
-                            self.inputTextField.preventUnexpectedResign = YES;
-                            [self.inputTextField becomeFirstResponder];
-                            self.inputTextField.text = @" ";
-                        }
+                        [self toggleSoftKeyboard];
                     }
                     break;
                 case SPECIALBTN_MOUSEPRI:

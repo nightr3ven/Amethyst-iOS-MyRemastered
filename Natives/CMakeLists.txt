@@ -398,6 +398,7 @@ add_executable(AngelAuraAmethyst
   UIKit+hook.m
   UIViewController+AMEPanel.m   # 子面板原生基底样式(移植自 Gsjsjzhznsz 的 Air fork)
   NMToast.m                    # 应用内通知(移植自 Gsjsjzhznsz 的 Air fork)
+  AMEKeyboardAccessoryView.m   # in-game keyboard toolbar (Esc/Tab/arrows/hide)
   ScreenUtils.m
 
   authenticator/BaseAuthenticator.m

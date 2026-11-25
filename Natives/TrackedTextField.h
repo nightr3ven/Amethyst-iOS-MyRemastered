@@ -11,4 +11,7 @@
 // 置位时忽略非显式的 resign；SurfaceViewController 在显式键盘开关处临时清零。
 
 @property(nonatomic, assign) BOOL preventUnexpectedResign;
+
+/// Closes the keyboard unconditionally (accessory hide button, Return, Esc).
+- (void)dismissKeyboard;
 @end
