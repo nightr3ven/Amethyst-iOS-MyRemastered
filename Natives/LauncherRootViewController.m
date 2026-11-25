@@ -1,3 +1,4 @@
+#import "AMEHomeViewController.h"
 #import "LauncherRootViewController.h"
 #import "LauncherMenuViewController.h"
 #import "LauncherNewsViewController.h"
@@ -632,8 +633,8 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
     _sidebarViewController = sidebarVC;
     
     // 中间内容 - 默认显示新闻页
-    LauncherNewsViewController *newsVC = [[LauncherNewsViewController alloc] init];
-    [self setContentViewController:newsVC animated:NO];
+    AMEHomeViewController *homeVC = [[AMEHomeViewController alloc] init];
+    [self setContentViewController:homeVC animated:NO];
     
     // 右侧面板 - 账户和启动
     LauncherRightPanelViewController *rightPanelVC = [[LauncherRightPanelViewController alloc] init];
@@ -782,9 +783,9 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
     //   (AmeRootTabController 把主页也包进了 UINavigationController,见 AmeRootTabController.m:116)
     //   ⇒ 直接 return ⇒ 内容区永远还原不回主页 ⇒ 账户页「完成」(只发 ShowHomePage)点了没反应(用户实测「点不动」)。
     //   这里补一步【幂等还原】:内容区不是主页(新闻页)时才重建 —— 已在主页时点标签栏「实例」不会多余刷新。
-    if (![self.contentViewController isKindOfClass:[LauncherNewsViewController class]]) {
-        LauncherNewsViewController *newsVC = [[LauncherNewsViewController alloc] init];
-        [self setContentViewController:newsVC animated:YES];
+    if (![self.contentViewController isKindOfClass:[AMEHomeViewController class]]) {
+        AMEHomeViewController *homeVC = [[AMEHomeViewController alloc] init];
+        [self setContentViewController:homeVC animated:YES];
     }
 }
 
