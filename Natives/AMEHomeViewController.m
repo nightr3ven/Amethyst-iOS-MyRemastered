@@ -2,6 +2,7 @@
 //  AMEHomeViewController.m
 //
 
+#import "AmeRootTabController.h"
 #import "AMEHomeViewController.h"
 #import "AMEDesign.h"
 #import "LauncherRightPanelViewController.h"
@@ -223,7 +224,7 @@ static NSString *const kRowCell = @"row";
         AMERow(@"Game folder", @"Saves, screenshots and config files", @"folder.fill", UIColor.systemBlueColor, ^{ post(@"ShowGameDirectory"); }),
     ];
     NSArray<AMEHomeRow *> *add = @[
-        AMERow(@"Download", @"New versions, mods, shaders and packs", @"arrow.down.circle.fill", AMEDesign.accentColor, ^{ [weakSelf switchToTab:1]; }),
+        AMERow(@"Download", @"New versions, mods, shaders and packs", @"arrow.down.circle.fill", AMEDesign.accentColor, ^{ [weakSelf switchToTab:AmeTabDownload]; }),
         AMERow(@"Import a modpack", @"From a .zip or .mrpack file", @"shippingbox.fill", UIColor.systemBrownColor, ^{ post(@"ShowModpackImport"); }),
         AMERow(@"Run a .jar installer", @"Forge, OptiFine and other installers", @"hammer.fill", UIColor.systemIndigoColor, ^{ [LauncherRightPanelViewController norightPostAction:@"executeJar"]; }),
     ];

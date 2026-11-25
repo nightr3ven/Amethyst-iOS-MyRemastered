@@ -1,3 +1,4 @@
+#import "AmeRootTabController.h"
 #import "VersionManagerViewController.h"
 // ★ [GLASS-LIQUID] 材质统一走风格层(AmeGlassEffect):iOS≥26 ⇒ 系统 UIGlassEffect
 #import "UIKit+GlassSurface.h"
@@ -888,7 +889,7 @@ static NSInteger const kSectionVersions    = 1;
     UITabBarController *tbc = self.tabBarController;
     if (tbc) {
         NSLog(@"[TABFIX] '+' ⇒ 切到下载标签(index 1)");
-        tbc.selectedIndex = 1;
+        tbc.selectedIndex = AmeTabDownload;
     } else {
         // 兜底:不在标签栏里(老流程)时保持原行为
         [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowDownloadPage" object:nil];

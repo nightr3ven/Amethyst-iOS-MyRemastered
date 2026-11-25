@@ -401,6 +401,7 @@ add_executable(AngelAuraAmethyst
   AMEKeyboardAccessoryView.m   # in-game keyboard toolbar (Esc/Tab/arrows/hide)
   AMEDesign.m                  # shared look for the redesigned launcher
   AMEHomeViewController.m      # redesigned Home tab
+  AMEInstancesViewController.m # redesigned Instances tab + instance page
   ScreenUtils.m
 
   authenticator/BaseAuthenticator.m

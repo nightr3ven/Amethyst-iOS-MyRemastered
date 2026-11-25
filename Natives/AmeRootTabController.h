@@ -14,6 +14,14 @@
 /// 直接调用已有的 handleMenuSelection: —— 导航语义一个字不变。
 extern NSString * const AmeTabTappedNotification;
 
+/// Tab order of the redesigned launcher. Always use these instead of numbers.
+typedef NS_ENUM(NSInteger, AmeTab) {
+    AmeTabHome      = 0,
+    AmeTabInstances = 1,
+    AmeTabDownload  = 2,
+    AmeTabSettings  = 3,
+};
+
 @interface AmeRootTabController : UITabBarController
 /// 用给定主页(内容)建控制器:5 个标签 = 主页 / 下载 / AI / 实例 / 设置。
 /// 主页承载真实内容(LauncherRootViewController 或 CardLayout),其余 4 个是空壳,

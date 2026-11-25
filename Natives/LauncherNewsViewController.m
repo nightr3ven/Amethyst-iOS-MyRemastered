@@ -1,3 +1,4 @@
+#import "AmeRootTabController.h"
 #import "LauncherNewsViewController.h"
 #import "HomeCustomizeViewController.h"
 #import "authenticator/BaseAuthenticator.h"
@@ -2330,7 +2331,7 @@ static NSString *festivalGreeting(void) {
     //   修法 = 与模组/光影/版本管理同款 fix2PushTab 范式：切到主页标签(0) + 在【该标签自己的导航栈】push 联机页 ——
     //   系统自带返回键(返回即回主页)，主页内容区完全不被替换。页面右上角 ztFab 仍可切 ZeroTier(模态自带关闭)。
     if ([action isEqualToString:kShortcutActionMultiplayer]) {
-        if ([self fix2PushTab:0 pushes:[TerracottaViewController class]
+        if ([self fix2PushTab:AmeTabHome pushes:[TerracottaViewController class]
                        makeVC:^UIViewController *{ return [[TerracottaViewController alloc] init]; }]) return;
         // 兜底:不在标签栏(老流程)保持原通知行为
         [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowMultiplayer" object:nil];
@@ -2345,14 +2346,14 @@ static NSString *festivalGreeting(void) {
     //   ★ 业务结果不变:导入/管理页该 push 还是 push,只是不再换主页。
     if ([action isEqualToString:kShortcutActionMods]) {
         // ★ [FIX2] 模组 → 「实例」标签(index 3)自己的栈里 push 模组管理
-        if ([self fix2PushTab:3 pushes:[ModsManagerViewController class]
+        if ([self fix2PushTab:AmeTabInstances pushes:[ModsManagerViewController class]
                        makeVC:^UIViewController *{ return [[ModsManagerViewController alloc] init]; }]) return;
         // 兜底:不在标签栏(老流程)保持原行为
         [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowModsManager" object:nil];
 
     } else if ([action isEqualToString:kShortcutActionShaders]) {
         // ★ [FIX2] 光影 → 「实例」标签(index 3);参数与原接收端 showShadersManager 一致
-        if ([self fix2PushTab:3 pushes:[ShadersManagerViewController class]
+        if ([self fix2PushTab:AmeTabInstances pushes:[ShadersManagerViewController class]
                        makeVC:^UIViewController *{
                            ShadersManagerViewController *s = [[ShadersManagerViewController alloc] init];
                            s.initialMode = ShadersManagerModeLocal;
@@ -2363,7 +2364,7 @@ static NSString *festivalGreeting(void) {
     } else if ([action isEqualToString:kShortcutActionModpack]) {
         // ★ [FIX2] 整合包导入 → 「下载」标签(index 1);导入页 push 到下载标签自己的导航栈,
         //   导入流程照跑,主页内容不动 ⇒ 返回后不会再看到“实例下载”。
-        if ([self fix2PushTab:1 pushes:[ModpackImportViewController class]
+        if ([self fix2PushTab:AmeTabDownload pushes:[ModpackImportViewController class]
                        makeVC:^UIViewController *{ return [[ModpackImportViewController alloc] init]; }]) return;
         [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowModpackImport" object:nil];
 
@@ -2380,7 +2381,7 @@ static NSString *festivalGreeting(void) {
         //   根因:改造前这里只发 ShowVersionManager,LauncherRootViewController(:733)/LauncherCardLayoutViewController
         //   收到后会调 setContentViewController: 把【主页内容】整体换成版本管理页 ⇒ 用户从子页返回后主页
         //   就永久停在版本管理(即用户复现的“串台”)。
-        if ([self fix2PushTab:3 pushes:[VersionManagerViewController class]
+        if ([self fix2PushTab:AmeTabInstances pushes:[VersionManagerViewController class]
                        makeVC:^UIViewController *{ return [[VersionManagerViewController alloc] init]; }]) return;
         // 兜底:不在标签栏(老流程)保持原行为
         [[NSNotificationCenter defaultCenter] postNotificationName:@"ShowVersionManager" object:nil];

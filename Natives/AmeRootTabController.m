@@ -10,6 +10,7 @@
 //    第 2 版把主页当"底衬"手工塞 subview ⇒ 触摸被容器吞、生命周期不走、JIT 不刷新,
 //    用户实测一次性报了三个 bug —— 那条路已废弃。
 //
+#import "AMEInstancesViewController.h"
 #import "AmeRootTabController.h"
 #import "utils.h"   // ★ [I18N] localize()
 #import "ios_uikit_bridge.h"   // ★ [GAME-LANDSCAPE] 游戏方向锁状态查询(AmeGameLandscapeLockActive)
@@ -92,25 +93,22 @@ static UIViewController *AmeWrapInNav(UIViewController *vc) {
     // ★ [I18N] 5 项:主页 · 下载 · AI · 实例 · 设置（★ 已按用户指示删掉「多人游戏」）
     // 标题经 localize 现取（键名 tab.*，四语同步在 Localizable.strings）；语言切换时
     // SceneDelegate 会重建根 UI，这里的标题自然跟新。
+    // Redesign: Home · Instances · Download · Settings (the AI assistant moved into Settings).
     NSArray<NSDictionary *> *items = @[
-        @{@"t": localize(@"tab.home", @"主页"),      @"i": @"house.fill"},
-        @{@"t": localize(@"tab.download", @"下载"),  @"i": @"arrow.down.circle.fill"},
-        @{@"t": localize(@"tab.ai", @"AI"),          @"i": @"sparkles"},
-        @{@"t": localize(@"tab.instances", @"实例"), @"i": @"square.stack.3d.up.fill"},
-        @{@"t": localize(@"tab.settings", @"设置"),  @"i": @"gearshape.fill"},
+        @{@"t": @"Home",      @"i": @"house.fill"},
+        @{@"t": @"Instances", @"i": @"square.stack.3d.up.fill"},
+        @{@"t": @"Download",  @"i": @"arrow.down.circle.fill"},
+        @{@"t": @"Settings",  @"i": @"gearshape.fill"},
     ];
 
     NSMutableArray<UIViewController *> *vcs = [NSMutableArray arrayWithCapacity:items.count];
     for (NSInteger i = 0; i < (NSInteger)items.count; i++) {
         UIViewController *content = nil;
-        switch (i) {
-            case 0: content = home ?: [[UIViewController alloc] init]; break;   // 主页 = 启动器现有全部界面
-            // ★ [ROOTTAB-FIX] 下载 = 【下载实例】(DownloadViewController:版本/模组/光影/资源包…七标签),
-            //   ★ 不包导航控制器 —— 包了会多一条导航栏,把内容整体压低(用户报"下载实例界面还是有点低")。
-            case 1: content = [[DownloadViewController alloc] init]; break;
-            case 2: content = [[AISessionListViewController alloc] init]; break;
-            case 3: content = [[VersionManagerViewController alloc] init]; break;   // ★ [TAB-INST-REVERT] 实例标签 = 版本管理单页(恢复原状,无分段)
-            case 4: content = [[LauncherPreferencesViewController alloc] init]; break;
+        switch ((AmeTab)i) {
+            case AmeTabHome:      content = home ?: [[UIViewController alloc] init]; break;
+            case AmeTabInstances: content = [[AMEInstancesViewController alloc] init]; break;
+            case AmeTabDownload:  content = [[DownloadViewController alloc] init]; break;
+            case AmeTabSettings:  content = [[LauncherPreferencesViewController alloc] init]; break;
             default: content = [[UIViewController alloc] init]; break;
         }
 

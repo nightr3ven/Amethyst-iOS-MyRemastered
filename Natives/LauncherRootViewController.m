@@ -1,3 +1,4 @@
+#import "AmeRootTabController.h"
 #import "AMEHomeViewController.h"
 #import "LauncherRootViewController.h"
 #import "LauncherMenuViewController.h"
@@ -776,10 +777,10 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
 
 - (void)showHomePage {
     // ★ [HOST-BUG-B] 主页本就是标签 0 ⇒ 切回标签 0 并回根,不再整体替换主页内容(同类串台)。
-    AmeHomeSwitchToTab(self, 0, YES);
+    AmeHomeSwitchToTab(self, AmeTabHome, YES);
     // ★ [ACCT-DONE] 但【主页内容区】可能被 setContentViewController: 换成了子页(账户管理,见 showAccountManager):
     //   那些子页挂在 contentContainer 里、不在标签导航栈里 ⇒ 上面 popToRoot 摘不掉它们。
-    //   原写法 `if (AmeHomeSwitchToTab(self, 0, YES)) return;` 在 iPhone 上恒为 YES
+    //   原写法 `if (AmeHomeSwitchToTab(self, AmeTabHome, YES)) return;` 在 iPhone 上恒为 YES
     //   (AmeRootTabController 把主页也包进了 UINavigationController,见 AmeRootTabController.m:116)
     //   ⇒ 直接 return ⇒ 内容区永远还原不回主页 ⇒ 账户页「完成」(只发 ShowHomePage)点了没反应(用户实测「点不动」)。
     //   这里补一步【幂等还原】:内容区不是主页(新闻页)时才重建 —— 已在主页时点标签栏「实例」不会多余刷新。
@@ -791,7 +792,7 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
 
 - (void)showDownloadPage {
     // ★ [HOST-BUG-B] 下载页本就是标签 1 ⇒ 切标签(不再换主页内容)。
-    if (AmeHomeSwitchToTab(self, 1, YES)) return;
+    if (AmeHomeSwitchToTab(self, AmeTabDownload, YES)) return;
     // 兜底(老流程):在中间内容区显示下载页面，包在 NavigationController 中以便子流程 push 显示
     DownloadViewController *downloadVC = [[DownloadViewController alloc] init];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:downloadVC];
@@ -805,7 +806,7 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
     //   整体换成版本管理页 ⇒ 底栏仍高亮主页、新页又成了另一栈的根,用户返回后主页内容也停在版本管理(串台)。
     //   改为:切到「实例」标签(index 3 —— 其根页本即 VersionManagerViewController)并 pop 回根页,
     //   与主页快捷入口 fix2PushTab / e1NewInstanceTapped 同一范式;主页内容区完全不被替换。
-    if (AmeHomeSwitchToTab(self, 3, YES)) return;
+    if (AmeHomeSwitchToTab(self, AmeTabInstances, YES)) return;
     // 兜底:不在标签栏(老流程)保持原行为 —— 在中间内容区显示版本管理页面，包在 NavigationController
     // 中以便子流程（模组/光影/游戏目录管理）push
     VersionManagerViewController *vc = [[VersionManagerViewController alloc] init];
@@ -842,7 +843,7 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
 
 - (void)showSettings {
     // ★ [HOST-BUG-B] 设置页本就是标签 4 ⇒ 切标签(不再换主页内容)。
-    if (AmeHomeSwitchToTab(self, 4, YES)) return;
+    if (AmeHomeSwitchToTab(self, AmeTabSettings, YES)) return;
     // 兜底(老流程):在中间内容区显示设置页面
     LauncherPreferencesViewController *vc = [[LauncherPreferencesViewController alloc] init];
     // 包装在导航控制器中，使其子页面能够正常导航
@@ -938,7 +939,7 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
 
 - (void)showModsManager {
     // ★ [TAB-CROSSTALK] 模组管理是「实例」标签(3)的页 ⇒ 切标签 + 她自己的栈里 push。
-    if ([self tabcrosstalkPushTab:3 pushes:[ModsManagerViewController class]
+    if ([self tabcrosstalkPushTab:AmeTabInstances pushes:[ModsManagerViewController class]
                            makeVC:^UIViewController *{ return [[ModsManagerViewController alloc] init]; }]) return;
     // 兜底(老流程:不在标签栏)保持原实现
     // 修复"前一界面未消失"竞态：先构建完整 nav 栈再 setContentViewController，
@@ -954,7 +955,7 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
 
 - (void)showShadersManager {
     // ★ [TAB-CROSSTALK] 光影管理是「实例」标签(3)的页 ⇒ 切标签 + 她自己的栈里 push。
-    if ([self tabcrosstalkPushTab:3 pushes:[ShadersManagerViewController class]
+    if ([self tabcrosstalkPushTab:AmeTabInstances pushes:[ShadersManagerViewController class]
                            makeVC:^UIViewController *{
                                ShadersManagerViewController *s = [[ShadersManagerViewController alloc] init];
                                s.initialMode = ShadersManagerModeLocal;
@@ -971,7 +972,7 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
 
 - (void)showGameDirectory {
     // ★ [TAB-CROSSTALK] 游戏目录设置是「实例」标签(3)的页 ⇒ 切标签 + 她自己的栈里 push。
-    if ([self tabcrosstalkPushTab:3 pushes:[LauncherPrefGameDirViewController class]
+    if ([self tabcrosstalkPushTab:AmeTabInstances pushes:[LauncherPrefGameDirViewController class]
                            makeVC:^UIViewController *{ return [[LauncherPrefGameDirViewController alloc] init]; }]) return;
     VersionManagerViewController *vm = [[VersionManagerViewController alloc] init];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vm];
@@ -983,7 +984,7 @@ static const CGFloat kPortraitCardCorner      = 16.0;   // 竖屏底部卡圆角
 
 - (void)showModpackImport {
     // ★ [TAB-CROSSTALK] 整合包导入是「下载」标签(1)的页 ⇒ 切标签 + 她自己的栈里 push。
-    if ([self tabcrosstalkPushTab:1 pushes:[ModpackImportViewController class]
+    if ([self tabcrosstalkPushTab:AmeTabDownload pushes:[ModpackImportViewController class]
                            makeVC:^UIViewController *{ return [[ModpackImportViewController alloc] init]; }]) return;
     // 兜底:切到下载页并直接 push 整合包导入界面
     DownloadViewController *d = [[DownloadViewController alloc] init];

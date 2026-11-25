@@ -174,7 +174,7 @@ extern UIWindow *mainWindow;
 
     if (!pushLanguagePage) return;
 
-    const NSUInteger settingsIndex = 4;   // 与 AmeRootTabController 的标签顺序保持一致
+    const NSUInteger settingsIndex = AmeTabSettings;   // 与 AmeRootTabController 的标签顺序保持一致
     if (settingsIndex >= tabs.viewControllers.count) return;
     tabs.selectedIndex = settingsIndex;
     UIViewController *settingsVC = tabs.viewControllers[settingsIndex];
