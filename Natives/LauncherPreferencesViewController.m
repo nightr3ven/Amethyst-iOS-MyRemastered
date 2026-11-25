@@ -285,9 +285,9 @@
         if ([section isEqualToString:@"ai"]) {
             if ([key isEqualToString:@"safety_mode"]) {
                 switch ([[AiSettings sharedSettings] safetyMode]) {
-                    case AiSafetyModeSafe:  return @"只读自动执行（Safe）";
-                    case AiSafetyModeAsk:   return @"写操作逐次确认（Ask）";
-                    case AiSafetyModeYOLO:  return @"自动批准（YOLO）";
+                    case AiSafetyModeSafe:  return @"Safe: read-only actions run automatically";
+                    case AiSafetyModeAsk:   return @"Ask: confirm every change";
+                    case AiSafetyModeYOLO:  return @"YOLO: approve everything";
                 }
             }
             if ([key isEqualToString:@"markdown_enabled"]) {
@@ -319,9 +319,9 @@
                     mode = (AiSafetyMode)[value integerValue];
                 } else if ([value isKindOfClass:[NSString class]]) {
                     NSString *s = value;
-                    if ([s containsString:@"逐次确认"]) {
+                    if ([s hasPrefix:@"Ask"]) {
                         mode = AiSafetyModeAsk;
-                    } else if ([s containsString:@"自动批准"]) {
+                    } else if ([s hasPrefix:@"YOLO"]) {
                         mode = AiSafetyModeYOLO;
                     }
                 }
@@ -1409,7 +1409,7 @@
             // AI 助手 settings（Air AI Agent Phase 2）
             @{@"icon": @"sparkles"},
             @{@"key": @"provider_config",
-              @"title": @"提供商配置",
+              @"title": @"AI provider",
               @"icon": @"globe.asia.australia.fill",
               @"type": self.typeButton,
               @"action": ^void(){
@@ -1420,7 +1420,7 @@
               }
             },
             @{@"key": @"session_list",
-              @"title": @"会话列表",
+              @"title": @"Chats",
               @"icon": @"rectangle.stack.badge.person.crop",
               @"type": self.typeButton,
               @"action": ^void(){
@@ -1431,27 +1431,27 @@
               }
             },
             @{@"key": @"safety_mode",
-              @"title": @"默认安全模式",
+              @"title": @"Default safety mode",
               @"icon": @"hand.raised.fill",
               @"type": self.typePickField,
               @"pickKeys": @[
-                  @"只读自动执行（Safe）",
-                  @"写操作逐次确认（Ask）",
-                  @"自动批准（YOLO）"
+                  @"Safe: read-only actions run automatically",
+                  @"Ask: confirm every change",
+                  @"YOLO: approve everything"
               ],
               @"pickList": @[
-                  @"只读自动执行（Safe）",
-                  @"写操作逐次确认（Ask）",
-                  @"自动批准（YOLO）"
+                  @"Safe: read-only actions run automatically",
+                  @"Ask: confirm every change",
+                  @"YOLO: approve everything"
               ]
             },
             @{@"key": @"markdown_enabled",
-              @"title": @"Markdown 渲染",
+              @"title": @"Format replies (Markdown)",
               @"icon": @"textformat",
               @"type": self.typeSwitch
             },
             @{@"key": @"system_prompt",
-              @"title": @"系统提示词",
+              @"title": @"System prompt",
               @"icon": @"text.book.closed.fill",
               @"type": self.typeButton,
               @"action": ^void(){

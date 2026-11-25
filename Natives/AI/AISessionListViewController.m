@@ -64,7 +64,7 @@
         UIBarButtonItem *close = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemClose
                                                                               target:self
                                                                               action:@selector(landBugCloseTapped)];
-        close.accessibilityLabel = @"关闭";
+        close.accessibilityLabel = @"Close";
         self.navigationItem.rightBarButtonItem = close;
     }
 }
@@ -167,11 +167,11 @@
     if (self.displayedSessions.count == 0) {
         self.emptyLabel.hidden = NO;
         if (!hasAny) {
-            self.emptyLabel.text = @"还没有会话，点左上角 + 新建";
+            self.emptyLabel.text = @"No chats yet. Tap + to start one.";
         } else if (searching) {
-            self.emptyLabel.text = @"没有匹配的会话";
+            self.emptyLabel.text = @"No matching chats";
         } else {
-            self.emptyLabel.text = @"还没有会话";
+            self.emptyLabel.text = @"No chats yet";
         }
     } else {
         self.emptyLabel.hidden = YES;
@@ -203,13 +203,13 @@
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     formatter.locale = [NSLocale localeWithLocaleIdentifier:@"zh_CN"];
     if (interval < 60) {
-        return @"刚刚";
+        return @"Just now";
     } else if (interval < 3600) {
-        return [NSString stringWithFormat:@"%ld 分钟前", (long)(interval / 60)];
+        return [NSString stringWithFormat:@"%ld min ago", (long)(interval / 60)];
     } else if (interval < 86400) {
-        return [NSString stringWithFormat:@"%ld 小时前", (long)(interval / 3600)];
+        return [NSString stringWithFormat:@"%ld h ago", (long)(interval / 3600)];
     } else if (interval < 7 * 86400) {
-        return [NSString stringWithFormat:@"%ld 天前", (long)(interval / 86400)];
+        return [NSString stringWithFormat:@"%ld d ago", (long)(interval / 86400)];
     }
     formatter.dateFormat = @"MM-dd";
     return [formatter stringFromDate:date];
@@ -269,7 +269,7 @@
     // 标题
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.text = session.title.length > 0 ? session.title : @"新会话";
+    titleLabel.text = session.title.length > 0 ? session.title : @"New chat";
     titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
     titleLabel.textColor = [UIColor labelColor];
     titleLabel.numberOfLines = 1;
@@ -279,7 +279,7 @@
     // 副标题：消息数 + 更新时间
     UILabel *subtitleLabel = [[UILabel alloc] init];
     subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    subtitleLabel.text = [NSString stringWithFormat:@"%lu 条消息 · %@",
+    subtitleLabel.text = [NSString stringWithFormat:@"%lu messages · %@",
                           (unsigned long)session.messages.count,
                           [self relativeTimeString:session.updatedAt]];
     subtitleLabel.font = [UIFont systemFontOfSize:12];
@@ -333,7 +333,7 @@
 - (NSArray<UITableViewRowAction *> *)tableView:(UITableView *)tableView editActionsForRowAtIndexPath:(NSIndexPath *)indexPath {
     __weak typeof(self) weakSelf = self;
     UITableViewRowAction *deleteAction = [UITableViewRowAction rowActionWithStyle:UITableViewRowActionStyleDestructive
-                                                                           title:@"删除"
+                                                                           title:@"Delete"
                                                                          handler:^(UITableViewRowAction * _Nonnull action, NSIndexPath * _Nonnull ip) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         AiSession *session = strongSelf.displayedSessions[ip.row];

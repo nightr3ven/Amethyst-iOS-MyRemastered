@@ -2287,3 +2287,5 @@
 "terracotta_log" = "Log";
 "terracotta_log_empty" = "No log yet";
 "terracotta_copy_log" = "Copy log";
+
+"generic_ok" = "OK";

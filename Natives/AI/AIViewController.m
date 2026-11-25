@@ -265,7 +265,7 @@ static const NSTimeInterval kUIThrottleInterval = 0.2;
     self.configureButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.configureButton.hidden = YES;
     self.configureButton.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
-    [self.configureButton setTitle:@"去配置" forState:UIControlStateNormal];
+    [self.configureButton setTitle:@"Set up" forState:UIControlStateNormal];
     [self.configureButton addTarget:self action:@selector(configureAction) forControlEvents:UIControlEventTouchUpInside];
     // 胶囊按钮
     self.configureButton.backgroundColor = [accentColor() colorWithAlphaComponent:0.15];
@@ -346,11 +346,11 @@ static const NSTimeInterval kUIThrottleInterval = 0.2;
 - (void)updateModelLabel {
     AiProvider *provider = [self currentProvider];
     if (provider && provider.name.length > 0) {
-        NSString *model = provider.model.length > 0 ? provider.model : @"默认模型";
+        NSString *model = provider.model.length > 0 ? provider.model : @"Default model";
         self.inputBar.modelLabel.text = [NSString stringWithFormat:@"%@ / %@", provider.name, model];
         self.inputBar.modelLabel.textColor = [UIColor labelColor];
     } else {
-        self.inputBar.modelLabel.text = @"未配置 AI 提供商";
+        self.inputBar.modelLabel.text = @"No AI provider set up";
         self.inputBar.modelLabel.textColor = [UIColor secondaryLabelColor];
     }
 }
@@ -361,10 +361,10 @@ static const NSTimeInterval kUIThrottleInterval = 0.2;
 }
 
 - (void)showConfigureHint {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"尚未配置 AI 提供商"
-                                                                    message:@"请在设置 → AI 助手 中配置 API 服务。"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"No AI provider set up yet"
+                                                                    message:@"Add an API provider in Settings › AI Assistant."
                                                              preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 
@@ -505,14 +505,14 @@ static const NSTimeInterval kUIThrottleInterval = 0.2;
         // 未配置提供商：无论是否已有消息都显示配置引导
         self.emptyStateView.hidden = NO;
         self.emptyIcon.image = [UIImage systemImageNamed:@"gearshape.2" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:56 weight:UIImageSymbolWeightRegular]];
-        self.emptyTitle.text = @"尚未配置 AI 提供商";
-        self.emptySubtitle.text = @"请到 设置 → AI 助手 配置 API 服务";
+        self.emptyTitle.text = @"No AI provider set up yet";
+        self.emptySubtitle.text = @"Add an API provider in Settings › AI Assistant.";
         self.configureButton.hidden = NO;
     } else if (!hasMessages) {
         self.emptyStateView.hidden = NO;
         self.emptyIcon.image = [UIImage systemImageNamed:@"sparkles" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:56 weight:UIImageSymbolWeightRegular]];
-        self.emptyTitle.text = @"和 AI 助手打个招呼吧";
-        self.emptySubtitle.text = @"向 Air 询问启动器问题或 Minecraft 知识";
+        self.emptyTitle.text = @"Say hi to the AI assistant";
+        self.emptySubtitle.text = @"Ask about the launcher, mods or Minecraft";
         self.configureButton.hidden = YES;
     } else {
         self.emptyStateView.hidden = YES;
@@ -534,10 +534,10 @@ static const NSTimeInterval kUIThrottleInterval = 0.2;
 }
 
 - (void)showErrorAlert:(NSError *)error {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"请求失败"
-                                                                    message:error.localizedDescription ?: @"未知错误"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Request failed"
+                                                                    message:error.localizedDescription ?: @"Unknown error"
                                                              preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
 

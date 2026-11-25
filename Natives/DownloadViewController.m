@@ -1334,7 +1334,7 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
 
     // ===== 2. 游戏版本选择按钮 =====
     self.sidebarVersionButton = [self createSidebarSelectButtonWithTitle:localize(@"i18n_str_2031", nil)
-                                                                    value:@"全部版本"
+                                                                    value:@"All versions"
                                                                   selector:@selector(sidebarVersionButtonClicked:)];
     [self.filterSidebarContainer addSubview:self.sidebarVersionButton];
     self.sidebarVersionTitleLabel = [self findSubviewInButton:self.sidebarVersionButton withTag:100];
@@ -1348,7 +1348,7 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
 
     // ===== 3. 模组加载器选择按钮 =====
     self.sidebarLoaderButton = [self createSidebarSelectButtonWithTitle:localize(@"i18n_str_160", nil)
-                                                                   value:@"全部"
+                                                                   value:@"All"
                                                                  selector:@selector(sidebarLoaderButtonClicked:)];
     [self.filterSidebarContainer addSubview:self.sidebarLoaderButton];
     self.sidebarLoaderTitleLabel = [self findSubviewInButton:self.sidebarLoaderButton withTag:100];
