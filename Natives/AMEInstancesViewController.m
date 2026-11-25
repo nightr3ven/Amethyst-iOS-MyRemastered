@@ -14,6 +14,8 @@
 #import "DataPacksManagerViewController.h"
 #import "WorldsManagerViewController.h"
 #import "utils.h"
+#import "AMENewInstanceViewController.h"
+#import "AMEModBrowserViewController.h"
 
 #pragma mark - Shared helpers
 
@@ -65,6 +67,11 @@ static NSString *AMELastPlayedText(NSString *profileName) {
     NSRelativeDateTimeFormatter *f = [[NSRelativeDateTimeFormatter alloc] init];
     f.unitsStyle = NSRelativeDateTimeFormatterUnitsStyleFull;
     return [NSString stringWithFormat:@"Played %@", [f localizedStringForDate:date relativeToDate:NSDate.date]];
+}
+
+static BOOL AMEProfileHasOwnFolder(NSString *profileName) {
+    NSString *gameDir = PLProfiles.current.profiles[profileName][@"gameDir"];
+    return [gameDir isKindOfClass:NSString.class] && gameDir.length > 0 && ![gameDir isEqualToString:@"."];
 }
 
 static BOOL AMEVersionIsConcrete(NSString *versionId) {
@@ -149,13 +156,14 @@ static void AMEConfirmDelete(UIViewController *host, NSString *profileName, void
 }
 
 - (void)addInstance {
-    // A new instance is created by installing a version (vanilla, Fabric, Forge, ...).
-    UITabBarController *tabs = self.tabBarController;
-    if (tabs.viewControllers.count > AmeTabDownload) {
-        tabs.selectedIndex = AmeTabDownload;
-    } else {
-        [NSNotificationCenter.defaultCenter postNotificationName:@"ShowDownloadPage" object:nil];
-    }
+    AMENewInstanceViewController *vc = [[AMENewInstanceViewController alloc] init];
+    __weak typeof(self) weakSelf = self;
+    vc.onCreated = ^(NSString *name) {
+        [weakSelf.navigationController popToViewController:weakSelf animated:NO];
+        [weakSelf reload];
+        [weakSelf openInstance:name];
+    };
+    [self.navigationController pushViewController:vc animated:YES];
 }
 
 - (void)openInstance:(NSString *)name {
@@ -174,7 +182,7 @@ static void AMEConfirmDelete(UIViewController *host, NSString *profileName, void
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    return @"Tap + to install a new version. Each instance keeps its own mods, worlds and settings.";
+    return @"Tap + to create an instance. Each one keeps its own mods, worlds and settings.";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -389,7 +397,7 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch ((AMEInstanceSection)section) {
         case AMEInstanceSectionPlay:     return 1;
-        case AMEInstanceSectionContent:  return 5;
+        case AMEInstanceSectionContent:  return 6;
         case AMEInstanceSectionSettings: return 2;
         case AMEInstanceSectionDelete:   return 1;
         default: return 0;
@@ -410,6 +418,9 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
         return [NSString stringWithFormat:@"%@ · %@ · %@", AMEInstanceLoaderName(v), AMEReadableVersion(v), AMELastPlayedText(self.profileName)];
     }
     if (section == AMEInstanceSectionSettings) {
+        if (AMEProfileHasOwnFolder(self.profileName)) {
+            return @"This instance has its own folder, so its mods, config, worlds, resource packs and shaders are never shared.";
+        }
         if (!AMEVersionIsConcrete(self.versionId)) {
             return @"This instance follows the latest release, so it uses the shared folder. Pick a specific version in Instance settings to give it its own files.";
         }
@@ -445,6 +456,13 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
             break;
         }
         case AMEInstanceSectionContent: {
+            if (indexPath.row == 0) {
+                cell.textLabel.text = @"Get mods, shaders & packs";
+                cell.textLabel.textColor = AMEDesign.accentColor;
+                cell.imageView.image = [AMEDesign iconTileWithSymbol:@"magnifyingglass" color:AMEDesign.accentColor];
+                cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+                break;
+            }
             NSArray *rows = @[
                 @[@"Mods", @"puzzlepiece.extension.fill", UIColor.systemOrangeColor],
                 @[@"Shaders", @"sparkles", UIColor.systemPurpleColor],
@@ -452,7 +470,7 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
                 @[@"Worlds", @"globe.americas.fill", UIColor.systemGreenColor],
                 @[@"Data packs", @"doc.zipper", UIColor.systemTealColor],
             ];
-            NSArray *row = rows[indexPath.row];
+            NSArray *row = rows[indexPath.row - 1];
             cell.textLabel.text = row[0];
             cell.imageView.image = [AMEDesign iconTileWithSymbol:row[1] color:row[2]];
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
@@ -463,8 +481,9 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
                 cell.textLabel.text = @"Keep files separate";
                 cell.imageView.image = [AMEDesign iconTileWithSymbol:@"square.on.square.dashed" color:UIColor.systemBlueColor];
                 NSDictionary *profile = PLProfiles.current.profiles[self.profileName];
-                self.isolationSwitch.on = amePCLVersionIsolationForProfile(profile, nil);
-                self.isolationSwitch.enabled = AMEVersionIsConcrete(self.versionId);
+                BOOL ownFolder = AMEProfileHasOwnFolder(self.profileName);
+                self.isolationSwitch.on = ownFolder || amePCLVersionIsolationForProfile(profile, nil);
+                self.isolationSwitch.enabled = !ownFolder && AMEVersionIsConcrete(self.versionId);
                 cell.accessoryView = self.isolationSwitch;
                 cell.selectionStyle = UITableViewCellSelectionStyleNone;
             } else {
@@ -495,7 +514,15 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     switch ((AMEInstanceSection)indexPath.section) {
         case AMEInstanceSectionContent:
-            [self openContent:indexPath.row];
+            if (indexPath.row == 0) {
+                AMESelectInstance(self.profileName);
+                NSString *loader = [AMEInstanceInfo infoForProfileName:self.profileName].loader;
+                AMEModBrowserViewController *b = [[AMEModBrowserViewController alloc] initWithProfileName:self.profileName
+                                                                                                     kind:loader ? AMEModrinthKindMod : AMEModrinthKindShader];
+                [self.navigationController pushViewController:b animated:YES];
+            } else {
+                [self openContent:indexPath.row - 1];
+            }
             break;
         case AMEInstanceSectionSettings:
             if (indexPath.row == 1) {

@@ -10,6 +10,7 @@
 //    第 2 版把主页当"底衬"手工塞 subview ⇒ 触摸被容器吞、生命周期不走、JIT 不刷新,
 //    用户实测一次性报了三个 bug —— 那条路已废弃。
 //
+#import "AMEDownloadViewController.h"
 #import "AMESettingsViewController.h"
 #import "AMEInstancesViewController.h"
 #import "AmeRootTabController.h"
@@ -108,7 +109,7 @@ static UIViewController *AmeWrapInNav(UIViewController *vc) {
         switch ((AmeTab)i) {
             case AmeTabHome:      content = home ?: [[UIViewController alloc] init]; break;
             case AmeTabInstances: content = [[AMEInstancesViewController alloc] init]; break;
-            case AmeTabDownload:  content = [[DownloadViewController alloc] init]; break;
+            case AmeTabDownload:  content = [[AMEDownloadViewController alloc] init]; break;
             case AmeTabSettings:  content = [[AMESettingsViewController alloc] init]; break;
             default: content = [[UIViewController alloc] init]; break;
         }

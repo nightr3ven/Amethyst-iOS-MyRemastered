@@ -403,6 +403,10 @@ add_executable(AngelAuraAmethyst
   AMEHomeViewController.m      # redesigned Home tab
   AMEInstancesViewController.m # redesigned Instances tab + instance page
   AMESettingsViewController.m  # redesigned Settings tab (categories)
+  AMEModrinth.m                # Modrinth search + one-tap install with dependencies
+  AMEModBrowserViewController.m # Modrinth browser for an instance
+  AMENewInstanceViewController.m # create Vanilla/Fabric/Quilt instances
+  AMEDownloadViewController.m  # redesigned Download tab
   ScreenUtils.m
 
   authenticator/BaseAuthenticator.m

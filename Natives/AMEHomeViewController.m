@@ -4,6 +4,9 @@
 
 #import "AmeRootTabController.h"
 #import "AMEHomeViewController.h"
+#import "AMEModBrowserViewController.h"
+#import "AMENewInstanceViewController.h"
+#import "AMEInstancesViewController.h"
 #import "AMEDesign.h"
 #import "LauncherRightPanelViewController.h"
 #import "ProfileSettingsViewController.h"
@@ -218,13 +221,11 @@ static NSString *const kRowCell = @"row";
     };
 
     NSArray<AMEHomeRow *> *instance = @[
-        AMERow(@"Mods", @"Turn mods on or off, or remove them", @"puzzlepiece.extension.fill", UIColor.systemOrangeColor, ^{ post(@"ShowModsManager"); }),
-        AMERow(@"Shaders", @"Choose and manage shader packs", @"sparkles", UIColor.systemPurpleColor, ^{ post(@"ShowShadersManager"); }),
-        AMERow(@"Version settings", @"Renderer, memory, Java and more", @"slider.horizontal.3", UIColor.systemGrayColor, ^{ [weakSelf openVersionSettings]; }),
-        AMERow(@"Game folder", @"Saves, screenshots and config files", @"folder.fill", UIColor.systemBlueColor, ^{ post(@"ShowGameDirectory"); }),
+        AMERow(@"Get mods, shaders & packs", @"From Modrinth, matched to this instance", @"magnifyingglass", AMEDesign.accentColor, ^{ [weakSelf openBrowser]; }),
+        AMERow(@"Open instance", @"Installed mods, worlds, shaders and settings", @"cube.fill", UIColor.systemBlueColor, ^{ [weakSelf openSelectedInstance]; }),
     ];
     NSArray<AMEHomeRow *> *add = @[
-        AMERow(@"Download", @"New versions, mods, shaders and packs", @"arrow.down.circle.fill", AMEDesign.accentColor, ^{ [weakSelf switchToTab:AmeTabDownload]; }),
+        AMERow(@"New instance", @"Vanilla, Fabric or Quilt, any version", @"plus.square.fill", UIColor.systemGreenColor, ^{ [weakSelf openNewInstance]; }),
         AMERow(@"Import a modpack", @"From a .zip or .mrpack file", @"shippingbox.fill", UIColor.systemBrownColor, ^{ post(@"ShowModpackImport"); }),
         AMERow(@"Run a .jar installer", @"Forge, OptiFine and other installers", @"hammer.fill", UIColor.systemIndigoColor, ^{ [LauncherRightPanelViewController norightPostAction:@"executeJar"]; }),
     ];
@@ -232,7 +233,7 @@ static NSString *const kRowCell = @"row";
         AMERow(@"Multiplayer", @"Play with friends over the internet", @"person.2.fill", UIColor.systemTealColor, ^{ post(@"ShowMultiplayer"); }),
     ];
 
-    self.sectionTitles = @[@"", @"This version", @"Add content", @"Play together"];
+    self.sectionTitles = @[@"", @"This instance", @"Add", @"Play together"];
     self.sections = @[@[], instance, add, together];
 }
 
@@ -257,6 +258,31 @@ static NSString *const kRowCell = @"row";
 - (void)switchToTab:(NSUInteger)index {
     UITabBarController *tabs = self.tabBarController ?: self.parentViewController.tabBarController;
     if (index < tabs.viewControllers.count) tabs.selectedIndex = index;
+}
+
+- (void)openBrowser {
+    NSString *profile = [self selectedProfileName];
+    if (profile.length == 0) { [self openNewInstance]; return; }
+    NSString *loader = [AMEInstanceInfo infoForProfileName:profile].loader;
+    [self pushOnHostNavigation:[[AMEModBrowserViewController alloc] initWithProfileName:profile
+                                                                                   kind:loader ? AMEModrinthKindMod : AMEModrinthKindShader]];
+}
+
+- (void)openSelectedInstance {
+    NSString *profile = [self selectedProfileName];
+    if (profile.length == 0) { [self openNewInstance]; return; }
+    [self pushOnHostNavigation:[[AMEInstanceViewController alloc] initWithProfileName:profile]];
+}
+
+- (void)openNewInstance {
+    AMENewInstanceViewController *vc = [[AMENewInstanceViewController alloc] init];
+    __weak typeof(self) weakSelf = self;
+    __weak AMENewInstanceViewController *weakVC = vc;
+    vc.onCreated = ^(NSString *name) {
+        [weakVC.navigationController popViewControllerAnimated:YES];
+        [weakSelf refresh];
+    };
+    [self pushOnHostNavigation:vc];
 }
 
 - (void)openVersionSettings {

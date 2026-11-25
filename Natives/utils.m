@@ -1856,8 +1856,13 @@ static BOOL amePCLVersionIdIsConcrete(NSString *vid) {
 // 解析 profile 的版本 id：优先用调用方给的"实际启动版本"（launchTarget[@“id”]），
 // 其次 profile.lastVersionId。都不可隔离则返回 nil。
 static NSString *amePCLProfileVersionId(NSDictionary *prof, NSString *concreteVersionId) {
-    if (amePCLVersionIdIsConcrete(concreteVersionId)) return concreteVersionId;
     id vid = prof[@"lastVersionId"];
+    // Redesign: a profile that follows "latest-release"/"latest-snapshot" always uses
+    // the shared folder. Before, the game (which knows the concrete id at launch) used
+    // versions/<id> while the mod/shader screens (which don't) used the shared folder,
+    // so mods added from the launcher never loaded.
+    if ([vid isKindOfClass:NSString.class] && [(NSString *)vid hasPrefix:@"latest-"]) return nil;
+    if (amePCLVersionIdIsConcrete(concreteVersionId)) return concreteVersionId;
     if ([vid isKindOfClass:NSString.class] && amePCLVersionIdIsConcrete((NSString *)vid)) {
         return (NSString *)vid;
     }
