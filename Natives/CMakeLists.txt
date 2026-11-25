@@ -407,6 +407,8 @@ add_executable(AngelAuraAmethyst
   AMEModBrowserViewController.m # Modrinth browser for an instance
   AMENewInstanceViewController.m # create Vanilla/Fabric/Quilt instances
   AMEDownloadViewController.m  # redesigned Download tab
+  AMEInstanceSettingsViewController.m # redesigned per-instance settings
+  AMEModCompatibility.m        # pre-launch Fabric mod conflict check
   ScreenUtils.m
 
   authenticator/BaseAuthenticator.m

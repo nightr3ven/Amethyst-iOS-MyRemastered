@@ -2,6 +2,8 @@
 //  AMEInstancesViewController.m
 //
 
+#import "AMEModCompatibility.h"
+#import "AMEInstanceSettingsViewController.h"
 #import "AMEInstancesViewController.h"
 #import "AMEDesign.h"
 #import "AmeRootTabController.h"
@@ -243,14 +245,15 @@ static void AMEConfirmDelete(UIViewController *host, NSString *profileName, void
     return [UIContextMenuConfiguration configurationWithIdentifier:nil previewProvider:nil actionProvider:^UIMenu *(NSArray<UIMenuElement *> *suggested) {
         UIAction *play = [UIAction actionWithTitle:@"Play" image:[UIImage systemImageNamed:@"play.fill"] identifier:nil handler:^(UIAction *a) {
             AMESelectInstance(name);
-            [LauncherRightPanelViewController norightPostAction:@"launch"];
+            [AMEModCompatibility checkProfile:name presenter:weakSelf play:^{
+                [LauncherRightPanelViewController norightPostAction:@"launch"];
+            }];
         }];
         UIAction *select = [UIAction actionWithTitle:@"Select" image:[UIImage systemImageNamed:@"checkmark.circle"] identifier:nil handler:^(UIAction *a) {
             AMESelectInstance(name);
         }];
         UIAction *settings = [UIAction actionWithTitle:@"Settings" image:[UIImage systemImageNamed:@"slider.horizontal.3"] identifier:nil handler:^(UIAction *a) {
-            ProfileSettingsViewController *vc = [[ProfileSettingsViewController alloc] init];
-            vc.profileName = name;
+            AMEInstanceSettingsViewController *vc = [[AMEInstanceSettingsViewController alloc] initWithProfileName:name];
             [weakSelf.navigationController pushViewController:vc animated:YES];
         }];
         UIAction *delete = [UIAction actionWithTitle:@"Delete" image:[UIImage systemImageNamed:@"trash"] identifier:nil handler:^(UIAction *a) {
@@ -332,7 +335,9 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
 
 - (void)play {
     AMESelectInstance(self.profileName);
-    [LauncherRightPanelViewController norightPostAction:@"launch"];
+    [AMEModCompatibility checkProfile:self.profileName presenter:self play:^{
+        [LauncherRightPanelViewController norightPostAction:@"launch"];
+    }];
 }
 
 - (void)isolationChanged:(UISwitch *)sender {
@@ -526,8 +531,7 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
             break;
         case AMEInstanceSectionSettings:
             if (indexPath.row == 1) {
-                ProfileSettingsViewController *vc = [[ProfileSettingsViewController alloc] init];
-                vc.profileName = self.profileName;
+                AMEInstanceSettingsViewController *vc = [[AMEInstanceSettingsViewController alloc] initWithProfileName:self.profileName];
                 [self.navigationController pushViewController:vc animated:YES];
             }
             break;

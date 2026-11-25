@@ -2,6 +2,8 @@
 //  AMEHomeViewController.m
 //
 
+#import "AMEModCompatibility.h"
+#import "AMEInstanceSettingsViewController.h"
 #import "AmeRootTabController.h"
 #import "AMEHomeViewController.h"
 #import "AMEModBrowserViewController.h"
@@ -240,7 +242,10 @@ static NSString *const kRowCell = @"row";
 #pragma mark - Actions
 
 - (void)play {
-    [LauncherRightPanelViewController norightPostAction:@"launch"];
+    NSString *profile = [self selectedProfileName];
+    void (^launch)(void) = ^{ [LauncherRightPanelViewController norightPostAction:@"launch"]; };
+    if (profile.length) [AMEModCompatibility checkProfile:profile presenter:self play:launch];
+    else launch();
 }
 
 - (void)pickVersion {
@@ -291,8 +296,7 @@ static NSString *const kRowCell = @"row";
         [self pickVersion];
         return;
     }
-    ProfileSettingsViewController *vc = [[ProfileSettingsViewController alloc] init];
-    vc.profileName = profile;
+    AMEInstanceSettingsViewController *vc = [[AMEInstanceSettingsViewController alloc] initWithProfileName:profile];
     [self pushOnHostNavigation:vc];
 }
 
