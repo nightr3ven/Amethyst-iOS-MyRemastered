@@ -229,7 +229,98 @@ static void ame_perf_log_gl(uint32_t frames) {
           calls[2] / f, bytes / f / 1024.0, us[2] / f / 1000.0, calls[3] / f, us[3] / f / 1000.0);
 }
 
+// ---------------------------------------------------------------------------
+// [PERF-SAMPLE]: a tiny PC sampler for the render thread only. ~500 times a
+// second it suspends that one thread, reads PC/LR, resumes it, and later maps
+// the addresses to "library:function". It never walks stacks or touches the
+// thread's memory (JFR's full sampler killed the game here). Every 5 s it logs
+// where the render thread spent its time. AMETHYST_PERF_SAMPLER=0 disables it.
+// ---------------------------------------------------------------------------
+#include <pthread.h>
+#include <ptrauth.h>
+#include <mach/thread_act.h>
+
+static thread_t g_ame_render_thread = MACH_PORT_NULL;
+#define AME_SAMPLES_MAX 4096
+static uint64_t g_ame_pc[AME_SAMPLES_MAX], g_ame_lr[AME_SAMPLES_MAX];
+static int g_ame_sample_count = 0;
+
+static NSString *ame_perf_where(uint64_t addr, BOOL withSymbol) {
+    Dl_info info;
+    if (addr == 0 || !dladdr((const void *)addr, &info) || !info.dli_fname) return @"java/jit";
+    const char *img = strrchr(info.dli_fname, '/'); img = img ? img + 1 : info.dli_fname;
+    if (!withSymbol || !info.dli_sname) return [NSString stringWithUTF8String:img];
+    return [NSString stringWithFormat:@"%s:%s", img, info.dli_sname];
+}
+
+static BOOL ame_perf_is_libsystem(NSString *where) {
+    return [where hasPrefix:@"libsystem_"] || [where hasPrefix:@"libc++"] || [where hasPrefix:@"libdyld"];
+}
+
+static void ame_perf_flush_samples(void) {
+    int n = g_ame_sample_count; g_ame_sample_count = 0;
+    if (n < 50) return;
+    NSMutableDictionary<NSString *, NSNumber *> *byImage = [NSMutableDictionary dictionary];
+    NSMutableDictionary<NSString *, NSNumber *> *bySymbol = [NSMutableDictionary dictionary];
+    for (int i = 0; i < n; i++) {
+        NSString *img = ame_perf_where(g_ame_pc[i], NO);
+        NSString *sym = ame_perf_where(g_ame_pc[i], YES);
+        if (ame_perf_is_libsystem(img)) {
+            // memcpy / locks etc.: also say who called them.
+            sym = [sym stringByAppendingFormat:@" <- %@", ame_perf_where(g_ame_lr[i], YES)];
+            img = [img stringByAppendingFormat:@" <- %@", ame_perf_where(g_ame_lr[i], NO)];
+        }
+        byImage[img] = @(byImage[img].intValue + 1);
+        bySymbol[sym] = @(bySymbol[sym].intValue + 1);
+    }
+    NSArray *(^top)(NSDictionary *, NSUInteger) = ^NSArray *(NSDictionary *d, NSUInteger k) {
+        NSArray *keys = [d keysSortedByValueUsingComparator:^NSComparisonResult(NSNumber *a, NSNumber *b) { return [b compare:a]; }];
+        return [keys subarrayWithRange:NSMakeRange(0, MIN(k, keys.count))];
+    };
+    NSMutableString *a = [NSMutableString stringWithFormat:@"[PERF-SAMPLE] render thread, %d samples | by library:", n];
+    for (NSString *k in top(byImage, 8)) [a appendFormat:@" %@ %.0f%%,", k, byImage[k].intValue * 100.0 / n];
+    NSLog(@"%@", a);
+    NSMutableString *b = [NSMutableString stringWithString:@"[PERF-SAMPLE] top functions:"];
+    for (NSString *k in top(bySymbol, 14)) [b appendFormat:@" %@ %.1f%%;", k, bySymbol[k].intValue * 100.0 / n];
+    NSLog(@"%@", b);
+}
+
+static void *ame_perf_sampler_main(void *arg) {
+    pthread_setname_np("air.perf-sampler");
+    uint64_t lastFlush = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    for (;;) {
+        usleep(2000);
+        thread_t t = g_ame_render_thread;
+        if (t == MACH_PORT_NULL) continue;
+        if (thread_suspend(t) != KERN_SUCCESS) continue;
+        arm_thread_state64_t st; mach_msg_type_number_t cnt = ARM_THREAD_STATE64_COUNT;
+        kern_return_t kr = thread_get_state(t, ARM_THREAD_STATE64, (thread_state_t)&st, &cnt);
+        thread_resume(t);
+        if (kr == KERN_SUCCESS && g_ame_sample_count < AME_SAMPLES_MAX) {
+            g_ame_pc[g_ame_sample_count] = (uint64_t)ptrauth_strip((void *)arm_thread_state64_get_pc(st), ptrauth_key_return_address);
+            g_ame_lr[g_ame_sample_count] = (uint64_t)ptrauth_strip((void *)arm_thread_state64_get_lr(st), ptrauth_key_return_address);
+            g_ame_sample_count++;
+        }
+        uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+        if (now - lastFlush >= 5000000000ull) { @autoreleasepool { ame_perf_flush_samples(); } lastFlush = now; }
+    }
+    return NULL;
+}
+
+static void ame_perf_sampler_note_render_thread(void) {
+    static BOOL started = NO;
+    if (started) return;
+    started = YES;
+    const char *e = getenv("AMETHYST_PERF_SAMPLER");
+    if (e && e[0] == '0') return;
+    g_ame_render_thread = mach_thread_self();
+    pthread_t th;
+    if (pthread_create(&th, NULL, ame_perf_sampler_main, NULL) == 0) pthread_detach(th);
+    NSLog(@"[PERF-SAMPLE] sampling the render thread (AMETHYST_PERF_SAMPLER=0 to disable)");
+}
+
 static void ame77_record_present(uint64_t dur_us, uint64_t now_us) {
+    ame_perf_sampler_note_render_thread();
     if (dur_us > ame77_present_max_us) ame77_present_max_us = (uint32_t)dur_us;
     ame77_present_sum_us += dur_us;
     ame77_present_count++;
