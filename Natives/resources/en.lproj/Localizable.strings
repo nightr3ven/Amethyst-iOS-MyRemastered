@@ -61,10 +61,10 @@
 "custom_controls.button_edit.section.behavior" = "Behavior";
 "custom_controls.button_edit.section.appearance" = "Appearance";
 
-"custom_controls.button_menu.add_subbutton" = "Add sub-button";
+"custom_controls.button_menu.add_subbutton" = "Add button to group";
 "custom_controls.control_menu.discard_changes" = "Discard changes";
 "custom_controls.control_menu.exit" = "Exit";
-"custom_controls.control_menu.exit.warn" = "You are about to exit without saving changes.";
+"custom_controls.control_menu.exit.warn" = "Save your changes before leaving?";
 "custom_controls.control_menu.save" = "Save";
 "custom_controls.control_menu.save.error.default" = "The control name cannot be \"default\" because it cannot be changed.";
 "custom_controls.control_menu.save.error.json" = "JSON error";
@@ -73,10 +73,10 @@
 "custom_controls.control_menu.make_default" = "Make default";
 "custom_controls.control_menu.safe_area" = "Safe area";
 "custom_controls.control_menu.add_button" = "Add button";
-"custom_controls.control_menu.add_drawer" = "Add drawer";
+"custom_controls.control_menu.add_drawer" = "Add group";
 "custom_controls.control_menu.add_joystick" = "Add joystick";
 "custom_controls.error.incompatible" = "This control version (code %d) is not implemented in this launcher build.";
-"custom_controls.hint" = "Long-press anywhere on screen for more options";
+"custom_controls.hint" = "Drag to move · Tap a control to edit it";
 
 "init.migrateDir" = "The Amethyst data directory is now %@. All of your existing data has been moved to the new location.";
 
@@ -647,8 +647,8 @@
 "preference.title.mod_touch_enable" = "Enable TouchController Mod Support";
 "preference.detail.mod_touch_enable" = "Enable TouchController mod support. Note that enabling：will disable \"Swipe shortcuts\".";
 
-"preference.title.custom_controls" = "Key tweaks";
-"preference.detail.custom_controls" = "Custom game control layout, drag and drop button position and size";
+"preference.title.custom_controls" = "Edit on-screen controls";
+"preference.detail.custom_controls" = "Move, resize and add buttons, or switch layouts";
 
 
 

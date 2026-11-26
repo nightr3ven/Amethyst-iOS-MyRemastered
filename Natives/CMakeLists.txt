@@ -409,6 +409,9 @@ add_executable(AngelAuraAmethyst
   AMEDownloadViewController.m  # redesigned Download tab
   AMEInstanceSettingsViewController.m # redesigned per-instance settings
   AMEModCompatibility.m        # pre-launch Fabric mod conflict check
+  AMEControlPropertiesViewController.m # redesigned on-screen control editor panel
+  AMEModsViewController.m      # redesigned per-instance Mods page
+  AMEPacksViewController.m     # redesigned Shaders / Resource packs pages
   ScreenUtils.m
 
   authenticator/BaseAuthenticator.m

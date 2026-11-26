@@ -263,7 +263,8 @@
     }
 
     // 启用设置项搜索（必须在 super viewDidLoad 之前设置，父类据此创建 searchController）
-    self.searchEnabled = YES;
+    // Category pages are short; a search bar there is just noise.
+    self.searchEnabled = self.ameCategory == nil;
 
     self.getPreference = ^id(NSString *section, NSString *key){
         // ★ [LANG-SWITCH] 语言项：显示名用 NSLocale 现取；实际值存 NSUserDefaults
@@ -2106,6 +2107,7 @@
     self.prefSections = sections;
     self.prefContents = contents;
     self.noSectionHeaderRows = YES;
+    self.prefDetailVisible = YES;   // explanations always visible; no "?" toggle
     self.prefSectionsVisible = YES;
 }
 

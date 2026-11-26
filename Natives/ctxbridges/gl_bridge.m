@@ -677,9 +677,42 @@ static BOOL ame_task53_realign_surface(void) {
 
 // 探针 + 自愈主入口。swapIndex 从 1 计。
 // 0 = undecided, 1 = normal, 2 = geo-heal blit
+// Perf probe: once, on the first frame, list what the real ANGLE context
+// exposes for batched drawing. MobileGlues falls back to CPU index rebasing
+// (one GPU readback per Sodium batch) when it sees no base-vertex support, and
+// that cost grows with render distance. This tells us whether ANGLE has the
+// feature and MobileGlues just isn't using it.
+static void ame_perf_log_es_draw_caps(void) {
+    static BOOL s_done = NO;
+    if (s_done) return;
+    s_done = YES;
+    void *h = dlopen("@executable_path/Frameworks/libGLESv2.framework/libGLESv2", RTLD_NOW | RTLD_NOLOAD);
+    if (h == NULL) return;
+    const unsigned char *(*getStringi)(unsigned, unsigned) = dlsym(h, "glGetStringi");
+    const unsigned char *(*getString)(unsigned) = dlsym(h, "glGetString");
+    void (*getIntegerv)(unsigned, int *) = dlsym(h, "glGetIntegerv");
+    if (getStringi == NULL || getIntegerv == NULL) return;
+    int n = 0, major = 0, minor = 0;
+    getIntegerv(0x821D /* GL_NUM_EXTENSIONS */, &n);
+    getIntegerv(0x821B /* GL_MAJOR_VERSION */, &major);
+    getIntegerv(0x821C /* GL_MINOR_VERSION */, &minor);
+    NSMutableArray *hits = [NSMutableArray array];
+    for (int i = 0; i < n; i++) {
+        const char *e = (const char *)getStringi(0x1F03 /* GL_EXTENSIONS */, (unsigned)i);
+        if (e && (strstr(e, "base_vertex") || strstr(e, "multi_draw") || strstr(e, "buffer_storage") ||
+                  strstr(e, "draw_indirect") || strstr(e, "request_extension"))) {
+            [hits addObject:@(e)];
+        }
+    }
+    const char *renderer = getString ? (const char *)getString(0x1F01) : "?";
+    NSLog(@"[PERF-CAPS] ANGLE ES %d.%d renderer=%s extensions=%d draw-related=[%@]",
+          major, minor, renderer ?: "?", n, [hits componentsJoinedByString:@" "]);
+}
+
 static void ame_task41_swap_forensics(EGLSurface surface, unsigned long swapIndex) {
     ame_es_t es = ame_es();
     if (es.getIntegerv == NULL || es.bindFramebuffer == NULL) return;
+    if (swapIndex == 3) ame_perf_log_es_draw_caps();
 
     static int s_mode = 0;          // 0 undecided / 1 normal / 2 blit
     // Task 76：取证降频 —— 健康 NORMAL 态下 swap 前零 GL/EGL 查询。

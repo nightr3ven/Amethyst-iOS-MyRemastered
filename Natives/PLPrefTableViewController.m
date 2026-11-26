@@ -132,7 +132,7 @@
     [super viewWillAppear:animated];
 
     // Put navigation buttons back in place if we're first of the navigation controller
-    if (self.hasDetail && self.navigationController) {
+    if (self.hasDetail && self.navigationController && !self.noSectionHeaderRows) {
         self.navigationItem.rightBarButtonItems = @[[self drawHelpButton]];
     }
 
@@ -286,7 +286,10 @@
         cell.selectionStyle = UITableViewCellSelectionStyleGray;
         id value = weakSelf.getPreference(section, key);
         if ([value isKindOfClass:[NSString class]]) {
-            cell.detailTextLabel.text = value;
+            // Show the human label for the stored value ("Dark", not "dark").
+            NSUInteger idx = [item[@"pickKeys"] indexOfObject:value];
+            NSArray *labels = item[@"pickList"];
+            cell.detailTextLabel.text = (idx != NSNotFound && idx < labels.count) ? labels[idx] : value;
         } else if ([value isKindOfClass:[NSNumber class]]) {
             cell.detailTextLabel.text = [value boolValue] ? @"YES" : @"NO";
         } else {
@@ -319,7 +322,10 @@
         cell.selectionStyle = UITableViewCellSelectionStyleGray;
         id value = weakSelf.getPreference(section, key);
         if ([value isKindOfClass:[NSString class]]) {
-            cell.detailTextLabel.text = value;
+            // Show the human label for the stored value ("Dark", not "dark").
+            NSUInteger idx = [item[@"pickKeys"] indexOfObject:value];
+            NSArray *labels = item[@"pickList"];
+            cell.detailTextLabel.text = (idx != NSNotFound && idx < labels.count) ? labels[idx] : value;
         } else if ([value isKindOfClass:[NSNumber class]]) {
             cell.detailTextLabel.text = [value boolValue] ? @"YES" : @"NO";
         } else {
@@ -527,17 +533,18 @@
         UIAlertController *alert = [UIAlertController alertControllerWithTitle:message
                                                                        message:nil
                                                                 preferredStyle:UIAlertControllerStyleActionSheet];
+        id current = self.getPreference(self.prefSections[indexPath.section], item[@"key"]);
         for (int i = 0; i < pickList.count; i++) {
             NSString *title = pickList[i];
             NSString *value = pickKeys[i];
             // 在标题前加 ✓ 标记当前选中项，让用户能直观看到当前值
-            if ([cell.detailTextLabel.text isEqualToString:value]) {
+            if ([current isEqual:value]) {
                 title = [NSString stringWithFormat:@"✓ %@", title];
             }
             UIAlertAction *action = [UIAlertAction actionWithTitle:title
                                                               style:UIAlertActionStyleDefault
                                                             handler:^(UIAlertAction *a) {
-                cell.detailTextLabel.text = value;
+                cell.detailTextLabel.text = pickList[i];
                 self.setPreference(self.prefSections[indexPath.section], item[@"key"], value);
                 void(^invokeAction)(NSString *) = item[@"action"];
                 if (invokeAction) {
@@ -564,14 +571,14 @@
             actionWithTitle:pickList[i]
             image:nil identifier:nil
             handler:^(UIAction *action) {
-                cell.detailTextLabel.text = pickKeys[i];
+                cell.detailTextLabel.text = pickList[i];
                 self.setPreference(self.prefSections[indexPath.section], item[@"key"], pickKeys[i]);
                 void(^invokeAction)(NSString *) = item[@"action"];
                 if (invokeAction) {
                     invokeAction(pickKeys[i]);
                 }
             }]];
-        if ([cell.detailTextLabel.text isEqualToString:pickKeys[i]]) {
+        if ([self.getPreference(self.prefSections[indexPath.section], item[@"key"]) isEqual:pickKeys[i]]) {
             menuItems.lastObject.state = UIMenuElementStateOn;
         }
     }

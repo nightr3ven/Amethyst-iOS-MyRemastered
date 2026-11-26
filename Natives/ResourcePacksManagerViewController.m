@@ -7,6 +7,7 @@
 //  在线下载入口已移至统一下载界面：空状态提供"去下载"引导按钮
 //
 
+#import "AMEModBrowserViewController.h"
 #import "ResourcePacksManagerViewController.h"
 #import "ResourcePackService.h"
 #import "ResourcePackItem.h"
@@ -283,15 +284,13 @@
 #pragma mark - 跳转统一下载界面
 
 - (void)openDownloadPage {
-    // 在线下载入口已收敛到统一下载界面（未区分资源类型 Tab，进入默认页）
-    DownloadViewController *downloadVC = [[DownloadViewController alloc] init];
-    // 关键修复（目标实例不一致）：传入本管理页绑定的 profileName
-    downloadVC.targetProfileName = self.profileName;
+    // Redesign: the Modrinth browser installs straight into this instance.
+    NSString *profile = self.profileName.length ? self.profileName : @"default";
+    UIViewController *vc = [[AMEModBrowserViewController alloc] initWithProfileName:profile kind:AMEModrinthKindResourcePack];
     if (self.navigationController) {
-        [self.navigationController pushViewController:downloadVC animated:YES];
+        [self.navigationController pushViewController:vc animated:YES];
     } else {
-        // 无导航栈（旧 present 路径）时全屏弹出
-        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:downloadVC];
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
         nav.modalPresentationStyle = UIModalPresentationFullScreen;
         [self presentViewController:nav animated:YES completion:nil];
     }

@@ -80,7 +80,7 @@
         row = @[@[@"New instance", @"Vanilla, Fabric or Quilt, any version", @"plus.square.fill", AMEDesign.accentColor],
                 @[@"Import a modpack", @".mrpack or .zip from Modrinth or CurseForge", @"shippingbox.fill", UIColor.systemBrownColor]][indexPath.row];
     } else {
-        row = @[@"Forge, NeoForge & more", @"The full downloader", @"square.grid.2x2.fill", UIColor.systemGrayColor];
+        row = @[@"Forge & NeoForge", @"Pick a game version, then a loader", @"hammer.fill", UIColor.systemGrayColor];
     }
     cell.textLabel.text = row[0];
     cell.detailTextLabel.text = row[1];
@@ -114,7 +114,9 @@
     } else if (indexPath.section == 1) {
         vc = [[ModpackImportViewController alloc] init];
     } else {
-        vc = [[DownloadViewController alloc] init];
+        DownloadViewController *d = [[DownloadViewController alloc] init];
+        d.versionsOnly = YES;
+        vc = d;
     }
     vc.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
     [self.navigationController pushViewController:vc animated:YES];

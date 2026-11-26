@@ -11,6 +11,8 @@
 #import "PLProfiles.h"
 #import "ProfileSettingsViewController.h"
 #import "ModsManagerViewController.h"
+#import "AMEModsViewController.h"
+#import "AMEPacksViewController.h"
 #import "ShadersManagerViewController.h"
 #import "ResourcePacksManagerViewController.h"
 #import "DataPacksManagerViewController.h"
@@ -353,23 +355,15 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
     UIViewController *vc = nil;
     switch (row) {
         case 0: {
-            ModsManagerViewController *m = [[ModsManagerViewController alloc] init];
-            m.profileName = self.profileName;
-            vc = m;
+            vc = [[AMEModsViewController alloc] initWithProfileName:self.profileName];
             break;
         }
         case 1: {
-            ShadersManagerViewController *s = [[ShadersManagerViewController alloc] init];
-            s.profileName = self.profileName;
-            s.initialMode = ShadersManagerModeLocal;
-            vc = s;
+            vc = [[AMEPacksViewController alloc] initWithProfileName:self.profileName kind:AMEModrinthKindShader];
             break;
         }
         case 2: {
-            ResourcePacksManagerViewController *r = [[ResourcePacksManagerViewController alloc] init];
-            r.profileName = self.profileName;
-            r.initialMode = ResourcePacksManagerModeLocal;
-            vc = r;
+            vc = [[AMEPacksViewController alloc] initWithProfileName:self.profileName kind:AMEModrinthKindResourcePack];
             break;
         }
         case 3: {

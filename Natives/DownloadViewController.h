@@ -12,4 +12,8 @@
 /// 未传入时回退到启动下载瞬间的当前选中 profile（viewDidLoad 时快照）。
 @property (nonatomic, copy, nullable) NSString *targetProfileName;
 
+/// Redesign: show only the game-version list (for Forge/NeoForge/OptiFine
+/// installs). Mods, shaders and packs live in the new Download hub.
+@property (nonatomic, assign) BOOL versionsOnly;
+
 @end

@@ -232,6 +232,19 @@ void generateAndSaveDefaultControl() {
             [fm moveItemAtPath:defaultPath toPath:classic error:nil];
         }
     }
+    // Redesign v2: the first modern layout (Amethyst's) piled its top-right
+    // buttons on top of each other on phones. Swap in the new layout once and
+    // keep whatever was there as "default (old).json" so nothing is lost.
+    NSString *v2Marker = [defaultPath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@".ame-layout-v2"];
+    if (builtinPath && ![fm fileExistsAtPath:v2Marker]) {
+        if ([fm fileExistsAtPath:defaultPath]) {
+            NSString *old = [defaultPath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"default (old).json"];
+            [fm removeItemAtPath:old error:nil];
+            [fm moveItemAtPath:defaultPath toPath:old error:nil];
+        }
+        [fm createDirectoryAtPath:defaultPath.stringByDeletingLastPathComponent withIntermediateDirectories:YES attributes:nil error:nil];
+        [[NSData data] writeToFile:v2Marker atomically:YES];
+    }
     if ([fm fileExistsAtPath:defaultPath]) {
         return;
     }

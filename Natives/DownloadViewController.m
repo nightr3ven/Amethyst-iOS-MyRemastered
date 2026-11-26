@@ -778,11 +778,15 @@ typedef NS_ENUM(NSInteger, ModernAssetType) {
     [self.view addSubview:self.tabSegment];
 
     [NSLayoutConstraint activateConstraints:@[
-        [self.tabSegment.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8],
+        [self.tabSegment.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:self.versionsOnly ? 0 : 8],
         [self.tabSegment.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:12],
         [self.tabSegment.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-12],
-        [self.tabSegment.heightAnchor constraintEqualToConstant:32]
+        [self.tabSegment.heightAnchor constraintEqualToConstant:self.versionsOnly ? 0 : 32]
     ]];
+    if (self.versionsOnly) {
+        self.tabSegment.hidden = YES;
+        self.title = @"Forge & NeoForge";
+    }
 }
 
 - (void)setupVersionFilterSegment {

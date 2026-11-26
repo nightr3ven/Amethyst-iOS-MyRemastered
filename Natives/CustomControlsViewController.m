@@ -9,6 +9,7 @@
 #import "customcontrols/ControlDrawer.h"
 #import "customcontrols/ControlJoystick.h"
 #import "customcontrols/CustomControlsUtils.h"
+#import "AMEControlPropertiesViewController.h"
 
 #include "glfw_keycodes.h"
 #include "utils.h"
@@ -23,6 +24,14 @@
 @property(nonatomic) NSString* currentFileName;
 @property(nonatomic) CGRect selectedPoint;
 @property(nonatomic) UINavigationBar* navigationBar;
+
+// Redesign: a floating toolbar replaces the hidden long-press menu.
+@property(nonatomic) UIVisualEffectView *ameBar;
+@property(nonatomic) UIStackView *ameMainItems, *ameSelectionItems;
+@property(nonatomic) UILabel *ameSelectionTitle, *ameHint;
+@property(nonatomic) UIButton *ameUndoButton, *ameRedoButton, *ameLayoutsButton, *ameAddSubButton, *ameDuplicateButton;
+@property(nonatomic, weak) ControlButton *ameSelected;
+@property(nonatomic) BOOL ameDirty;
 
 @end
 
@@ -40,14 +49,6 @@
     [self setNeedsUpdateOfHomeIndicatorAutoHidden];
 
     UIEdgeInsets insets = UIApplication.sharedApplication.windows.firstObject.safeAreaInsets;
-
-    UILabel *guideLabel = [[UILabel alloc] initWithFrame:self.view.frame];
-    guideLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    guideLabel.numberOfLines = 0;
-    guideLabel.textAlignment = NSTextAlignmentCenter;
-    guideLabel.textColor = UIColor.whiteColor;
-    guideLabel.text = localize(@"custom_controls.hint", nil);
-    [self.view addSubview:guideLabel]; 
 
     self.ctrlView = [[ControlLayout alloc] initWithFrame:getSafeArea(self.view.frame)];
     self.ctrlView.layer.borderColor = UIColor.labelColor.CGColor;
@@ -93,9 +94,308 @@
     UILongPressGestureRecognizer *longpressGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(showControlPopover:)];
     longpressGesture.minimumPressDuration = 0.5;
     [self.ctrlView addGestureRecognizer:longpressGesture];
+
+    // Tapping empty space clears the selection.
+    UITapGestureRecognizer *backgroundTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(ameBackgroundTapped:)];
+    backgroundTap.delegate = self;
+    [self.ctrlView addGestureRecognizer:backgroundTap];
+
     NSString *fileName = self.getDefaultCtrl();
     self.currentFileName = [fileName stringByDeletingPathExtension];
     [self loadControlFile:fileName];
+
+    [self ameBuildToolbar];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(ameRefreshToolbar) name:NSUndoManagerDidCloseUndoGroupNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(ameRefreshToolbar) name:NSUndoManagerDidUndoChangeNotification object:nil];
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(ameRefreshToolbar) name:NSUndoManagerDidRedoChangeNotification object:nil];
+}
+
+#pragma mark - Redesigned editor toolbar
+
+- (UIButton *)ameBarButton:(NSString *)title symbol:(NSString *)symbol action:(SEL)action {
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
+    [b setImage:[UIImage systemImageNamed:symbol withConfiguration:cfg] forState:UIControlStateNormal];
+    if (title.length) {
+        [b setTitle:[@" " stringByAppendingString:title] forState:UIControlStateNormal];
+        b.titleLabel.font = [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold];
+    }
+    b.tintColor = UIColor.whiteColor;
+    b.contentEdgeInsets = UIEdgeInsetsMake(8, 10, 8, 10);
+    b.accessibilityLabel = title.length ? title : symbol;
+    if (action) [b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    [b setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    return b;
+}
+
+- (UIView *)ameDivider {
+    UIView *v = [[UIView alloc] init];
+    v.backgroundColor = [UIColor colorWithWhite:1 alpha:0.25];
+    v.translatesAutoresizingMaskIntoConstraints = NO;
+    [v.widthAnchor constraintEqualToConstant:1].active = YES;
+    [v.heightAnchor constraintEqualToConstant:22].active = YES;
+    return v;
+}
+
+- (void)ameBuildToolbar {
+    self.ameBar = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
+    self.ameBar.translatesAutoresizingMaskIntoConstraints = NO;
+    self.ameBar.layer.cornerRadius = 22;
+    self.ameBar.layer.cornerCurve = kCACornerCurveContinuous;
+    self.ameBar.clipsToBounds = YES;
+    [self.view addSubview:self.ameBar];
+
+    // Normal mode: Done | Undo Redo | Add Layouts
+    UIButton *done = [self ameBarButton:@"Done" symbol:@"checkmark" action:@selector(ameDone)];
+    done.tintColor = [UIColor colorWithRed:0.35 green:0.85 blue:0.45 alpha:1];
+    self.ameUndoButton = [self ameBarButton:nil symbol:@"arrow.uturn.backward" action:@selector(ameUndo)];
+    self.ameUndoButton.accessibilityLabel = @"Undo";
+    self.ameRedoButton = [self ameBarButton:nil symbol:@"arrow.uturn.forward" action:@selector(ameRedo)];
+    self.ameRedoButton.accessibilityLabel = @"Redo";
+
+    UIButton *add = [self ameBarButton:@"Add" symbol:@"plus" action:nil];
+    __weak typeof(self) ws = self;
+    add.menu = [UIMenu menuWithChildren:@[
+        [UIAction actionWithTitle:@"Button" image:[UIImage systemImageNamed:@"circle"] identifier:nil handler:^(UIAction *a) { [ws ameAdd:0]; }],
+        [UIAction actionWithTitle:@"Group (opens more buttons)" image:[UIImage systemImageNamed:@"rectangle.stack"] identifier:nil handler:^(UIAction *a) { [ws ameAdd:1]; }],
+        [UIAction actionWithTitle:@"Joystick" image:[UIImage systemImageNamed:@"dpad"] identifier:nil handler:^(UIAction *a) { [ws ameAdd:2]; }],
+    ]];
+    add.showsMenuAsPrimaryAction = YES;
+
+    self.ameLayoutsButton = [self ameBarButton:@"Layout" symbol:@"square.grid.2x2" action:nil];
+    self.ameLayoutsButton.menu = [UIMenu menuWithChildren:@[
+        [UIAction actionWithTitle:@"Switch layout…" image:[UIImage systemImageNamed:@"arrow.left.arrow.right"] identifier:nil handler:^(UIAction *a) { [ws ameSwitchLayout]; }],
+        [UIAction actionWithTitle:@"Save as new layout…" image:[UIImage systemImageNamed:@"square.and.arrow.down"] identifier:nil handler:^(UIAction *a) { [ws actionMenuSave]; }],
+        [UIAction actionWithTitle:@"Fit to screen area…" image:[UIImage systemImageNamed:@"rectangle.dashed"] identifier:nil handler:^(UIAction *a) { [ws actionMenuSafeArea]; }],
+        [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[
+            [UIAction actionWithTitle:@"Reset to default layout" image:[UIImage systemImageNamed:@"arrow.counterclockwise"] identifier:nil handler:^(UIAction *a) { [ws ameResetToDefault]; }],
+            [UIAction actionWithTitle:@"Discard changes and exit" image:[UIImage systemImageNamed:@"xmark"] identifier:nil handler:^(UIAction *a) { [ws ameDiscard]; }],
+        ]],
+    ]];
+    self.ameLayoutsButton.showsMenuAsPrimaryAction = YES;
+
+    self.ameMainItems = [[UIStackView alloc] initWithArrangedSubviews:@[done, [self ameDivider], self.ameUndoButton, self.ameRedoButton, [self ameDivider], add, self.ameLayoutsButton]];
+
+    // Selection mode: × Name | Edit Duplicate (Add to group) Delete
+    UIButton *close = [self ameBarButton:nil symbol:@"xmark" action:@selector(ameDeselect)];
+    close.accessibilityLabel = @"Deselect";
+    self.ameSelectionTitle = [[UILabel alloc] init];
+    self.ameSelectionTitle.textColor = UIColor.whiteColor;
+    self.ameSelectionTitle.font = [UIFont systemFontOfSize:15 weight:UIFontWeightBold];
+    [self.ameSelectionTitle setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    [self.ameSelectionTitle.widthAnchor constraintLessThanOrEqualToConstant:120].active = YES;
+    UIButton *edit = [self ameBarButton:@"Edit" symbol:@"slider.horizontal.3" action:@selector(actionMenuBtnEdit)];
+    self.ameDuplicateButton = [self ameBarButton:@"Duplicate" symbol:@"plus.square.on.square" action:@selector(ameDuplicate)];
+    self.ameAddSubButton = [self ameBarButton:@"Add button" symbol:@"plus.rectangle.on.rectangle" action:@selector(actionMenuAddSubButton)];
+    UIButton *del = [self ameBarButton:nil symbol:@"trash" action:@selector(ameDelete)];
+    del.tintColor = UIColor.systemRedColor;
+    del.accessibilityLabel = @"Delete";
+    self.ameSelectionItems = [[UIStackView alloc] initWithArrangedSubviews:@[close, self.ameSelectionTitle, [self ameDivider], edit, self.ameDuplicateButton, self.ameAddSubButton, del]];
+
+    for (UIStackView *stack in @[self.ameMainItems, self.ameSelectionItems]) {
+        stack.axis = UILayoutConstraintAxisHorizontal;
+        stack.alignment = UIStackViewAlignmentCenter;
+        stack.spacing = 2;
+        stack.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.ameBar.contentView addSubview:stack];
+        [NSLayoutConstraint activateConstraints:@[
+            [stack.leadingAnchor constraintEqualToAnchor:self.ameBar.contentView.leadingAnchor constant:8],
+            [stack.trailingAnchor constraintEqualToAnchor:self.ameBar.contentView.trailingAnchor constant:-8],
+            [stack.topAnchor constraintEqualToAnchor:self.ameBar.contentView.topAnchor],
+            [stack.bottomAnchor constraintEqualToAnchor:self.ameBar.contentView.bottomAnchor],
+        ]];
+    }
+    // The bar sizes to whichever stack is showing.
+    self.ameSelectionItems.hidden = YES;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.ameBar.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [self.ameBar.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:8],
+        [self.ameBar.heightAnchor constraintEqualToConstant:44],
+    ]];
+
+    self.ameHint = [[UILabel alloc] init];
+    self.ameHint.translatesAutoresizingMaskIntoConstraints = NO;
+    self.ameHint.text = @"Drag to move  ·  Tap a control to edit it  ·  Drag the dot to resize";
+    self.ameHint.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    self.ameHint.textColor = [UIColor colorWithWhite:1 alpha:0.85];
+    self.ameHint.layer.shadowColor = UIColor.blackColor.CGColor;
+    self.ameHint.layer.shadowOpacity = 0.8;
+    self.ameHint.layer.shadowRadius = 3;
+    self.ameHint.layer.shadowOffset = CGSizeZero;
+    self.ameHint.userInteractionEnabled = NO;
+    [self.view addSubview:self.ameHint];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.ameHint.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [self.ameHint.topAnchor constraintEqualToAnchor:self.ameBar.bottomAnchor constant:6],
+    ]];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [UIView animateWithDuration:0.6 animations:^{ ws.ameHint.alpha = 0; }];
+    });
+
+    [self ameRefreshToolbar];
+}
+
+- (void)ameRefreshToolbar {
+    self.ameUndoButton.enabled = self.undoManager.canUndo;
+    self.ameRedoButton.enabled = self.undoManager.canRedo;
+    self.ameUndoButton.alpha = self.ameUndoButton.enabled ? 1 : 0.35;
+    self.ameRedoButton.alpha = self.ameRedoButton.enabled ? 1 : 0.35;
+    if (self.undoManager.canUndo) self.ameDirty = YES;
+
+    ControlButton *sel = self.ameSelected;
+    if (sel != nil && sel.superview == nil) sel = self.ameSelected = nil;
+    BOOL selecting = sel != nil;
+    self.ameMainItems.hidden = selecting;
+    self.ameSelectionItems.hidden = !selecting;
+    if (selecting) {
+        NSString *name = [sel.properties[@"name"] description];
+        if ([sel isKindOfClass:ControlJoystick.class]) name = @"Joystick";
+        name = [name stringByReplacingOccurrencesOfString:@"\n" withString:@" "];
+        self.ameSelectionTitle.text = name.length ? name : @"Button";
+        self.ameAddSubButton.hidden = ![sel isKindOfClass:ControlDrawer.class];
+        self.ameDuplicateButton.hidden = [sel isKindOfClass:ControlDrawer.class] || [sel isKindOfClass:ControlSubButton.class];
+    }
+}
+
+- (void)ameSelect:(ControlButton *)button {
+    if (self.ameSelected && self.ameSelected != button) {
+        self.ameSelected.layer.borderWidth = 0;
+    }
+    self.ameSelected = button;
+    button.layer.borderWidth = 2;
+    button.layer.borderColor = self.view.tintColor.CGColor;
+    self.resizeView.target = button;
+    self.resizeView.hidden = [button isKindOfClass:ControlSubButton.class] &&
+        ![((ControlSubButton *)button).parentDrawer.drawerData[@"orientation"] isEqualToString:@"FREE"];
+    CGPoint origin = [self.ctrlView convertPoint:button.frame.origin toView:self.view];
+    self.resizeView.frame = CGRectMake(origin.x + button.frame.size.width - 10, origin.y + button.frame.size.height - 10, self.resizeView.frame.size.width, self.resizeView.frame.size.height);
+    [self ameRefreshToolbar];
+}
+
+- (void)ameDeselect {
+    self.ameSelected.layer.borderWidth = 0;
+    self.ameSelected = nil;
+    self.resizeView.hidden = YES;
+    self.resizeView.target = nil;
+    [self ameRefreshToolbar];
+}
+
+- (void)ameBackgroundTapped:(UITapGestureRecognizer *)sender {
+    if (self.navigationBar.hidden) [self ameDeselect];
+}
+
+- (void)ameUndo { [self ameDeselect]; [self.undoManager undo]; [self ameRefreshToolbar]; }
+- (void)ameRedo { [self ameDeselect]; [self.undoManager redo]; [self ameRefreshToolbar]; }
+
+- (void)ameDelete {
+    if (!self.ameSelected) return;
+    [self doRemoveButton:self.ameSelected];
+    [self ameDeselect];
+    self.ameDirty = YES;
+}
+
+- (void)ameAdd:(NSInteger)kind {
+    [self ameDeselect];
+    CGPoint c = CGPointMake(CGRectGetMidX(self.ctrlView.bounds), CGRectGetMidY(self.ctrlView.bounds));
+    self.selectedPoint = CGRectMake(c.x, c.y, 1, 1);
+    NSUInteger before = self.ctrlView.subviews.count;
+    if (kind == 0) [self actionMenuAddButton];
+    else if (kind == 1) [self actionMenuAddDrawer];
+    else [self actionMenuAddJoystick];
+    self.ameDirty = YES;
+    if (self.ctrlView.subviews.count > before) {
+        UIView *v = self.ctrlView.subviews.lastObject;
+        if ([v isKindOfClass:ControlButton.class]) {
+            ControlButton *b = (ControlButton *)v;
+            if (kind == 0) { b.properties[@"name"] = @"Button"; b.properties[@"cornerRadius"] = @100; b.properties[@"width"] = @62; b.properties[@"height"] = @62; }
+            if (kind == 1) { b.properties[@"name"] = @"More"; b.properties[@"cornerRadius"] = @100; b.properties[@"width"] = @68; b.properties[@"height"] = @36; }
+            [b update];
+            [self ameSelect:b];
+            [self actionMenuBtnEditFor:b];
+        }
+    }
+}
+
+- (void)ameDuplicate {
+    ControlButton *src = self.ameSelected;
+    if (!src) return;
+    NSMutableDictionary *props = [NSPropertyListSerialization propertyListWithData:
+        [NSPropertyListSerialization dataWithPropertyList:src.properties format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil]
+        options:NSPropertyListMutableContainersAndLeaves format:nil error:nil];
+    if (!props) return;
+    BOOL joystick = [src isKindOfClass:ControlJoystick.class];
+    ControlButton *copy = joystick ? [ControlJoystick buttonWithProperties:props] : [ControlButton buttonWithProperties:props];
+    NSString *list = joystick ? @"mJoystickDataList" : @"mControlDataList";
+    [self doAddButton:copy atIndex:@([self.ctrlView.layoutDictionary[list] count])];
+    CGFloat x = clamp(src.frame.origin.x + 20, 0, self.ctrlView.frame.size.width - src.frame.size.width);
+    CGFloat y = clamp(src.frame.origin.y + 20, 0, self.ctrlView.frame.size.height - src.frame.size.height);
+    [copy snapAndAlignX:x Y:y];
+    [copy update];
+    [copy addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(showControlPopover:)]];
+    [copy addGestureRecognizer:[[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(onTouch:)]];
+    self.ameDirty = YES;
+    [self ameSelect:copy];
+}
+
+- (void)ameDone {
+    [self ameDeselect];
+    if (!self.ameDirty) {
+        [self dismissViewControllerAnimated:!isInGame completion:nil];
+        return;
+    }
+    NSString *name = self.currentFileName.length ? self.currentFileName : @"default";
+    NSError *error;
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:self.ctrlView.layoutDictionary options:NSJSONWritingPrettyPrinted error:&error];
+    NSString *path = [NSString stringWithFormat:@"%s/controlmap/%@.json", getenv("POJAV_HOME"), name];
+    if (jsonData == nil || ![jsonData writeToFile:path options:NSDataWritingAtomic error:&error]) {
+        showDialog(@"Couldn't save the layout", error.localizedDescription ?: @"");
+        return;
+    }
+    self.setDefaultCtrl([name stringByAppendingPathExtension:@"json"]);
+    [self.undoManager removeAllActions];
+    [self dismissViewControllerAnimated:!isInGame completion:nil];
+}
+
+- (void)ameDiscard {
+    [self.undoManager removeAllActions];
+    self.ameDirty = NO;
+    [self dismissViewControllerAnimated:!isInGame completion:nil];
+}
+
+- (void)ameSwitchLayout {
+    [self ameDeselect];
+    self.selectedPoint = [self.ameBar convertRect:self.ameLayoutsButton.frame fromView:self.ameLayoutsButton.superview];
+    self.selectedPoint = [self.view convertRect:self.selectedPoint fromView:self.ameBar];
+    [self actionMenuLoad];
+}
+
+- (void)ameResetToDefault {
+    UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Reset to the default layout?"
+        message:@"This replaces the buttons on screen. Nothing is saved until you tap Done." preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Reset" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {
+        NSString *builtin = [NSBundle.mainBundle pathForResource:@"default_controls" ofType:@"json"];
+        NSMutableDictionary *dict = builtin ? parseJSONFromFile(builtin) : nil;
+        if (dict == nil || dict[@"NSErrorObject"]) return;
+        [self ameDeselect];
+        [self.ctrlView removeAllButtons];
+        [self.ctrlView loadControlLayout:dict];
+        [self ameAttachEditGestures];
+        [self.undoManager removeAllActions];
+        self.ameDirty = YES;
+        [self viewDidLayoutSubviews];
+        [self ameRefreshToolbar];
+    }]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+
+- (void)ameAttachEditGestures {
+    for (ControlButton *button in self.ctrlView.subviews) {
+        if (![button isKindOfClass:ControlButton.class]) continue;
+        [button addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(showControlPopover:)]];
+        [button addGestureRecognizer:[[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(onTouch:)]];
+    }
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -164,13 +464,9 @@
 }
 
 - (void)loadControlFile:(NSString *)file {
+    [self ameDeselect];
     [self.ctrlView loadControlFile:file];
-    for (ControlButton *button in self.ctrlView.subviews) {
-        [button addGestureRecognizer:[[UITapGestureRecognizer alloc]
-            initWithTarget:self action:@selector(showControlPopover:)]];
-        [button addGestureRecognizer:[[UIPanGestureRecognizer alloc]
-            initWithTarget:self action:@selector(onTouch:)]];
-    }
+    [self ameAttachEditGestures];
 }
 
 - (void)viewDidLayoutSubviews {
@@ -211,6 +507,19 @@
 }
 
 - (void)showControlPopover:(UIGestureRecognizer *)sender {
+    // Redesign: tapping a control selects it and the toolbar shows its actions.
+    if ([sender.view isKindOfClass:ControlButton.class]) {
+        if (sender.state == UIGestureRecognizerStateEnded || sender.state == UIGestureRecognizerStateBegan) {
+            self.currentGesture = sender;
+            if (self.ameSelected == sender.view) {
+                [self actionMenuBtnEdit];   // second tap opens the editor
+            } else {
+                [self ameSelect:(ControlButton *)sender.view];
+            }
+        }
+        return;
+    }
+    if (self.ameBar != nil) return;
     self.currentGesture = sender;
 
     if (sender.state != UIGestureRecognizerStateBegan &&
@@ -256,6 +565,7 @@
 }
 
 - (void)actionMenuExit {
+    if (self.ameBar != nil) { [self ameDone]; return; }
     if (self.undoManager.canUndo) {
         [self actionMenuSaveWithExit:YES];
         return;
@@ -264,8 +574,8 @@
 }
 
 - (void)actionMenuSaveWithExit:(BOOL)exit {
-    UIAlertController *controller = [UIAlertController alertControllerWithTitle: localize(@"custom_controls.control_menu.save", nil)
-        message:exit?localize(@"custom_controls.control_menu.exit.warn", nil):@""
+    UIAlertController *controller = [UIAlertController alertControllerWithTitle:exit ? localize(@"custom_controls.control_menu.save", nil) : @"Save as new layout"
+        message:exit?localize(@"custom_controls.control_menu.exit.warn", nil):@"Give this layout a name. You can switch between layouts any time."
         preferredStyle:UIAlertControllerStyleAlert];
     [controller addTextFieldWithConfigurationHandler:^(UITextField *textField) {
         // ★ [AUDIT-DECIDE] A-10：硬编码 "Name" → 复用已有键 custom_controls.button_edit.name。
@@ -294,7 +604,10 @@
         }
 
         self.currentFileName = field.text;
+        self.setDefaultCtrl([field.text stringByAppendingPathExtension:@"json"]);
         [self.undoManager removeAllActions];
+        self.ameDirty = NO;
+        [self ameRefreshToolbar];
     }]];
     if (exit) {
         [controller addAction:[UIAlertAction actionWithTitle:localize(@"custom_controls.control_menu.discard_changes", nil) style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action) {
@@ -422,8 +735,12 @@
 }
 
 - (void)actionMenuAddSubButton {
-    self.selectedPoint = CGRectMake(self.currentGesture.view.frame.origin.x + 25.0, self.currentGesture.view.frame.origin.y + 25.0, 1.0, 1.0);
-    [self actionMenuAddButtonWithDrawer:(ControlDrawer *)self.currentGesture.view];
+    UIView *drawer = self.ameSelected ?: self.currentGesture.view;
+    if (![drawer isKindOfClass:ControlDrawer.class]) return;
+    self.selectedPoint = CGRectMake(drawer.frame.origin.x + 25.0, drawer.frame.origin.y + 25.0, 1.0, 1.0);
+    [self actionMenuAddButtonWithDrawer:(ControlDrawer *)drawer];
+    self.ameDirty = YES;
+    [self ameRefreshToolbar];
 }
 
 - (void)actionMenuAddJoystick {
@@ -518,13 +835,30 @@
 }
 
 - (void)actionMenuBtnEdit {
-    CCMenuViewController *vc = [[CCMenuViewController alloc] init];
+    ControlButton *target = self.ameSelected ?: (ControlButton *)self.currentGesture.view;
+    if (![target isKindOfClass:ControlButton.class]) return;
+    [self actionMenuBtnEditFor:target];
+}
+
+- (void)actionMenuBtnEditFor:(ControlButton *)target {
+    AMEControlPropertiesViewController *vc = [[AMEControlPropertiesViewController alloc] initWithButton:target];
+    __weak typeof(self) ws = self;
+    vc.onFinish = ^(NSMutableDictionary *oldProps, NSMutableDictionary *changed) {
+        if (changed.count) {
+            [ws doUpdateButton:target from:oldProps to:changed];
+            ws.ameDirty = YES;
+        }
+        if ([target isKindOfClass:ControlDrawer.class]) {
+            [(ControlDrawer *)target syncButtons];
+            ws.ameDirty = YES;   // "Opens" direction lives outside properties
+        }
+        [ws ameSelect:target];
+    };
+    // Show the panel on the side away from the control so it stays visible.
+    CGPoint c = [self.ctrlView convertPoint:target.center toView:self.view];
+    vc.panelOnLeft = c.x > self.view.bounds.size.width / 2;
     vc.modalPresentationStyle = UIModalPresentationOverFullScreen;
     vc.modalTransitionStyle = UIModalTransitionStyleCrossDissolve;
-    vc.preferredContentSize = self.view.frame.size;
-    if (![self.currentGesture isKindOfClass:[UILongPressGestureRecognizer class]]) {
-        vc.targetButton = (ControlButton *)self.currentGesture.view;
-    }
     [self presentViewController:vc animated:YES completion:nil];
 }
 
@@ -628,7 +962,7 @@
     switch (sender.state) {
         case UIGestureRecognizerStateBegan: {
             origButtonRect = button.frame;
-            [self setButtonMenuVisibleForView:nil];
+            [self ameSelect:button];
             self.resizeView.hidden = NO;
             self.resizeView.target = button;
         } break;
@@ -641,6 +975,8 @@
         case UIGestureRecognizerStateCancelled:
         case UIGestureRecognizerStateEnded: {
             [self doMoveOrResizeButton:button from:origButtonRect to:button.frame];
+            self.ameDirty = YES;
+            [self ameSelect:button];
         } break;
         default: break;
     }

@@ -5,6 +5,7 @@
 //  光影管理界面实现 —— 接入 ResourceListViewController / ResourceCardTableViewCell 基类
 //
 
+#import "AMEModBrowserViewController.h"
 #import "ShadersManagerViewController.h"
 #import "ResourceCardTableViewCell.h"
 #import "ShaderService.h"
@@ -408,16 +409,13 @@ static NSString * const kShaderCardCellIdentifier = @"ShaderCardCell";
 }
 
 - (void)openDownloadPage {
-    // 跳转统一下载界面并定位到光影 tab（在线下载入口已统一收口到下载页）
-    DownloadViewController *downloadVC = [[DownloadViewController alloc] init];
-    downloadVC.initialTabIndex = 2; // 0版本 1模组 2光影
-    // 关键修复（目标实例不一致）：传入本管理页绑定的 profileName
-    downloadVC.targetProfileName = self.profileName;
+    // Redesign: the Modrinth browser installs straight into this instance.
+    NSString *profile = self.profileName.length ? self.profileName : @"default";
+    UIViewController *vc = [[AMEModBrowserViewController alloc] initWithProfileName:profile kind:AMEModrinthKindShader];
     if (self.navigationController) {
-        [self.navigationController pushViewController:downloadVC animated:YES];
+        [self.navigationController pushViewController:vc animated:YES];
     } else {
-        // 兼容 present 弹窗容器（无导航栈时全屏模态）
-        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:downloadVC];
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
         nav.modalPresentationStyle = UIModalPresentationFullScreen;
         [self presentViewController:nav animated:YES completion:nil];
     }

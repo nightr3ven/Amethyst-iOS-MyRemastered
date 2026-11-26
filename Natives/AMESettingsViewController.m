@@ -85,8 +85,8 @@ static AMESettingsItem *AMECustom(NSString *title, NSString *subtitle, NSString 
                 @[@"download"],
                 @[@"general", @[@"curseforge_api_key", @"mod_mirror"]],
             ]),
-            AMEPage(@"Appearance", @"Theme and app icon", @"paintbrush.fill", UIColor.systemIndigoColor, @[
-                @[@"general", @[@"ui_theme", @"appicon", @"custom_appicon"]],
+            AMEPage(@"Appearance", @"Theme and background", @"paintbrush.fill", UIColor.systemIndigoColor, @[
+                @[@"general", @[@"ui_theme", @"launcher_background"]],
             ]),
         ],
         @[
