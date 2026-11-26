@@ -40,7 +40,8 @@ BOOL leftShiftHeld;
 }
 
 + (void)sendKeyEvent:(int)controllerKeycode pressed:(BOOL)pressed {
-    int keycode;
+    // Unmapped buttons (e.g. Home) must do nothing, not send whatever was on the stack.
+    int keycode = GLFW_KEY_UNKNOWN;
     __block NSMutableDictionary *mapping;
     if (isGrabbing) {
         mapping = gameMap;
@@ -181,10 +182,9 @@ BOOL leftShiftHeld;
         lastLThumbDirection = direction;
     };
     gamepad.rightThumbstick.valueChangedHandler = ^(GCControllerDirectionPad * _Nonnull dpad, float xValue, float yValue) {
-        if (isGrabbing) {
-            lastXValue = xValue;
-            lastYValue = yValue;
-        }
+        // Camera in game; in menus it moves the cursor like the left stick.
+        lastXValue = xValue;
+        lastYValue = yValue;
     };
     gamepad.leftThumbstickButton.pressedChangedHandler = ^(GCControllerButtonInput * _Nonnull button, float value, BOOL pressed) {
         [self sendKeyEvent:GLFW_GAMEPAD_BUTTON_LEFT_THUMB pressed:pressed];
