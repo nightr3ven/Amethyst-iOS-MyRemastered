@@ -153,17 +153,9 @@ void init_hookUIKitConstructor(void) {
 }
 @end
 
-@implementation UITraitCollection(hook)
-
-- (UIUserInterfaceSizeClass)horizontalSizeClass {
-    return UIUserInterfaceSizeClassRegular;
-}
-
-- (UIUserInterfaceSizeClass)verticalSizeClass {
-    return UIUserInterfaceSizeClassRegular;
-}
-
-@end
+// Redesign: removed the UITraitCollection(hook) category that forced every
+// size class to Regular. It made iPhone layouts behave like iPad ones (for
+// example the tab bar put labels beside icons instead of under them).
 
 @implementation UIWindow(hook)
 
