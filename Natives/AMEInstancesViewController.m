@@ -201,7 +201,7 @@ static void AMEConfirmDelete(UIViewController *host, NSString *profileName, void
     cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
     NSString *detail = [NSString stringWithFormat:@"%@ · %@ · %@",
                         AMEInstanceLoaderName(version), AMEReadableVersion(version), AMELastPlayedText(name)];
-    cell.detailTextLabel.text = selected ? [@"Selected · " stringByAppendingString:detail] : detail;
+    cell.detailTextLabel.text = selected ? [@"On Home · " stringByAppendingString:detail] : detail;
     cell.detailTextLabel.textColor = selected ? AMEDesign.accentColor : UIColor.secondaryLabelColor;
     cell.detailTextLabel.numberOfLines = 2;
     cell.detailTextLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
@@ -232,7 +232,7 @@ static void AMEConfirmDelete(UIViewController *host, NSString *profileName, void
     NSString *name = self.profileNames[indexPath.row];
     if ([name isEqualToString:PLProfiles.current.selectedProfileName]) return nil;
     UIContextualAction *select = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal
-                                                                         title:@"Select"
+                                                                         title:@"Use on Home"
                                                                        handler:^(UIContextualAction *a, UIView *v, void (^done)(BOOL)) {
         AMESelectInstance(name);
         done(YES);
@@ -252,7 +252,7 @@ static void AMEConfirmDelete(UIViewController *host, NSString *profileName, void
                 [LauncherRightPanelViewController norightPostAction:@"launch"];
             }];
         }];
-        UIAction *select = [UIAction actionWithTitle:@"Select" image:[UIImage systemImageNamed:@"checkmark.circle"] identifier:nil handler:^(UIAction *a) {
+        UIAction *select = [UIAction actionWithTitle:@"Use on Home" image:[UIImage systemImageNamed:@"house"] identifier:nil handler:^(UIAction *a) {
             AMESelectInstance(name);
         }];
         UIAction *settings = [UIAction actionWithTitle:@"Settings" image:[UIImage systemImageNamed:@"slider.horizontal.3"] identifier:nil handler:^(UIAction *a) {

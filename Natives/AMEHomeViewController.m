@@ -10,6 +10,7 @@
 #import "AMENewInstanceViewController.h"
 #import "AMEInstancesViewController.h"
 #import "AMEDesign.h"
+#import "AMEModrinth.h"
 #import "LauncherRightPanelViewController.h"
 #import "ProfileSettingsViewController.h"
 #import "PLProfiles.h"
@@ -21,6 +22,7 @@
 @property(nonatomic, strong) UIView *statusDot;
 @property(nonatomic, strong) UILabel *statusLabel;
 @property(nonatomic, strong) UILabel *titleLabel;
+@property(nonatomic, strong) UILabel *detailLabel;
 @property(nonatomic, strong) UIButton *versionButton;
 @property(nonatomic, strong) UIButton *accountButton;
 @property(nonatomic, strong) UIButton *playButton;
@@ -60,9 +62,14 @@
     self.titleLabel.adjustsFontSizeToFitWidth = YES;
     self.titleLabel.minimumScaleFactor = 0.6;
 
-    self.versionButton = [AMEDesign buttonWithTitle:@"Version" symbol:@"cube.box" style:AMEButtonStyleSecondary];
+    self.detailLabel = [[UILabel alloc] init];
+    self.detailLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline];
+    self.detailLabel.textColor = UIColor.secondaryLabelColor;
+    self.detailLabel.adjustsFontForContentSizeCategory = YES;
+
+    self.versionButton = [AMEDesign buttonWithTitle:@"Switch" symbol:@"chevron.up.chevron.down" style:AMEButtonStyleSecondary];
     self.accountButton = [AMEDesign buttonWithTitle:@"Account" symbol:@"person.crop.circle" style:AMEButtonStyleSecondary];
-    self.versionButton.accessibilityHint = @"Choose which version to play";
+    self.versionButton.accessibilityHint = @"Choose which instance Play launches";
     self.accountButton.accessibilityHint = @"Switch or add accounts";
 
     UIStackView *chips = [[UIStackView alloc] initWithArrangedSubviews:@[self.versionButton, self.accountButton]];
@@ -72,10 +79,11 @@
     self.playButton = [AMEDesign buttonWithTitle:@"Play" symbol:@"play.fill" style:AMEButtonStylePrimary];
     [self.playButton.heightAnchor constraintGreaterThanOrEqualToConstant:56].active = YES;
 
-    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[statusRow, self.titleLabel, chips, self.playButton]];
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[statusRow, self.titleLabel, self.detailLabel, chips, self.playButton]];
     stack.axis = UILayoutConstraintAxisVertical;
     stack.spacing = 14;
     [stack setCustomSpacing:6 afterView:statusRow];
+    [stack setCustomSpacing:2 afterView:self.titleLabel];
     [stack setCustomSpacing:20 afterView:chips];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentView addSubview:stack];
@@ -214,6 +222,53 @@ static NSString *const kRowCell = @"row";
     BaseAuthenticator *auth = BaseAuthenticator.current;
     NSString *name = auth.authData[@"username"];
     return name.length > 0 ? name : @"Sign in";
+}
+
+- (NSString *)displayNameForProfile:(NSString *)name {
+    return [name isEqualToString:@"(Default)"] ? @"Latest release" : name;
+}
+
+/// "Fabric · 26.3 · 8 mods"
+- (NSString *)detailForProfile:(NSString *)name {
+    AMEInstanceInfo *info = [AMEInstanceInfo infoForProfileName:name];
+    NSString *versionId = PLProfiles.current.profiles[name][@"lastVersionId"];
+    NSMutableArray *bits = [NSMutableArray arrayWithObject:AMEInstanceLoaderName(versionId)];
+    NSString *game = info.gameVersion ?: ([versionId hasPrefix:@"latest"] ? @"newest version" : versionId);
+    if (game.length) [bits addObject:game];
+    if (info.loader) {
+        NSUInteger mods = 0;
+        for (NSString *f in [NSFileManager.defaultManager contentsOfDirectoryAtPath:[info folderForKind:AMEModrinthKindMod] error:nil]) {
+            if ([f.lowercaseString hasSuffix:@".jar"]) mods++;
+        }
+        [bits addObject:[NSString stringWithFormat:@"%lu mod%@", (unsigned long)mods, mods == 1 ? @"" : @"s"]];
+    }
+    return [bits componentsJoinedByString:@" · "];
+}
+
+- (UIMenu *)instanceMenu {
+    __weak typeof(self) weakSelf = self;
+    NSString *current = [self selectedProfileName];
+    NSArray *names = [PLProfiles.current.profiles.allKeys sortedArrayUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
+        double la = [PLProfiles.current.profiles[a][@"lastPlayed"] doubleValue], lb = [PLProfiles.current.profiles[b][@"lastPlayed"] doubleValue];
+        if (la != lb) return la > lb ? NSOrderedAscending : NSOrderedDescending;
+        return [a localizedCaseInsensitiveCompare:b];
+    }];
+    NSMutableArray *items = [NSMutableArray array];
+    for (NSString *name in names) {
+        UIAction *a = [UIAction actionWithTitle:[self displayNameForProfile:name] image:nil identifier:nil handler:^(UIAction *x) {
+            AMESelectInstance(name);
+            [weakSelf refresh];
+        }];
+        a.subtitle = [self detailForProfile:name];
+        if ([name isEqualToString:current]) a.state = UIMenuElementStateOn;
+        [items addObject:a];
+    }
+    UIMenu *list = [UIMenu menuWithTitle:@"Play which instance?" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:items];
+    UIMenu *more = [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[
+        [UIAction actionWithTitle:@"New instance" image:[UIImage systemImageNamed:@"plus"] identifier:nil handler:^(UIAction *x) { [weakSelf openNewInstance]; }],
+        [UIAction actionWithTitle:@"Manage instances" image:[UIImage systemImageNamed:@"square.stack.3d.up"] identifier:nil handler:^(UIAction *x) { [weakSelf pickVersion]; }],
+    ]];
+    return [UIMenu menuWithChildren:@[list, more]];
 }
 
 - (void)buildSections {
@@ -369,8 +424,12 @@ static NSString *const kRowCell = @"row";
 - (UITableViewCell *)heroCellForTableView:(UITableView *)tableView indexPath:(NSIndexPath *)indexPath {
     AMEHomeHeroCell *cell = [tableView dequeueReusableCellWithIdentifier:kHeroCell forIndexPath:indexPath];
 
-    cell.titleLabel.text = [self currentVersionTitle];
-    [AMEDesign setTitle:@"Switch instance" ofButton:cell.versionButton];
+    NSString *profile = [self selectedProfileName];
+    cell.titleLabel.text = profile.length ? [self displayNameForProfile:profile] : @"No instance yet";
+    cell.detailLabel.text = profile.length ? [self detailForProfile:profile] : @"Create one to start playing";
+    [AMEDesign setTitle:@"Switch" ofButton:cell.versionButton];
+    cell.versionButton.menu = [self instanceMenu];
+    cell.versionButton.showsMenuAsPrimaryAction = YES;
     [AMEDesign setTitle:[self currentAccountTitle] ofButton:cell.accountButton];
 
     NSString *jit = self.state[@"jit"];
@@ -387,7 +446,6 @@ static NSString *const kRowCell = @"row";
     [cell.versionButton removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
     [cell.accountButton removeTarget:nil action:NULL forControlEvents:UIControlEventAllEvents];
     [cell.playButton addTarget:self action:@selector(play) forControlEvents:UIControlEventTouchUpInside];
-    [cell.versionButton addTarget:self action:@selector(pickVersion) forControlEvents:UIControlEventTouchUpInside];
     [cell.accountButton addTarget:self action:@selector(manageAccounts) forControlEvents:UIControlEventTouchUpInside];
     return cell;
 }

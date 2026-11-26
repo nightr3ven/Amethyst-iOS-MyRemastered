@@ -85,9 +85,6 @@ NSString * const AmeTabTappedNotification = @"AmeTabTapped";   // ★ [ROOTTAB]
 @interface AMEIconOnlyTabBarItem : UITabBarItem
 @end
 @implementation AMEIconOnlyTabBarItem
-- (void)setTitle:(NSString *)title {
-    [super setTitle:nil];
-}
 @end
 
 @implementation AmeRootTabController
@@ -127,10 +124,14 @@ static UIViewController *AmeWrapInNav(UIViewController *vc) {
         // ★ [ROOTTAB-FIX] tabBarItem 必须设在【内容 VC】上:导航控制器会用它 push 栈顶页面的
         //   item 覆盖自己那个 —— 上一版设在 nav 上 ⇒ 第 3 个标签显示成了"会话列表"。
         // Redesign: icons only (the title stays as the VoiceOver label).
-        AMEIconOnlyTabBarItem *tabItem = [[AMEIconOnlyTabBarItem alloc] initWithTitle:nil
+        // Real titles keep the bar at its normal size (the iOS 26 glass bar
+        // shrinks to fit its labels); the text itself is made invisible below
+        // so the bar still shows icons only.
+        AMEIconOnlyTabBarItem *tabItem = [[AMEIconOnlyTabBarItem alloc] initWithTitle:items[i][@"t"]
                                                                                  image:[UIImage systemImageNamed:items[i][@"i"]]
                                                                          selectedImage:nil];
         tabItem.accessibilityLabel = items[i][@"t"];
+        tabItem.imageInsets = UIEdgeInsetsMake(6, 0, -6, 0);   // center the icon where the label would be
         tabItem.largeContentSizeImage = [UIImage systemImageNamed:items[i][@"i"]];
         content.tabBarItem = tabItem;
         content.tabBarItem.tag = i;
@@ -140,6 +141,16 @@ static UIViewController *AmeWrapInNav(UIViewController *vc) {
     }
     tbc.viewControllers = vcs;
     tbc.selectedIndex = 0;
+
+    UITabBarAppearance *ap = [tbc.tabBar.standardAppearance copy] ?: [[UITabBarAppearance alloc] init];
+    NSDictionary *hidden = @{NSForegroundColorAttributeName: UIColor.clearColor, NSFontAttributeName: [UIFont systemFontOfSize:10]};
+    for (UITabBarItemAppearance *item in @[ap.stackedLayoutAppearance, ap.inlineLayoutAppearance, ap.compactInlineLayoutAppearance]) {
+        for (UITabBarItemStateAppearance *state in @[item.normal, item.selected, item.focused, item.disabled]) {
+            state.titleTextAttributes = hidden;
+        }
+    }
+    tbc.tabBar.standardAppearance = ap;
+    tbc.tabBar.scrollEdgeAppearance = ap;
     tbc.delegate = tbc;
 
     // ★ 不设 UITabBarAppearance:设了就盖掉 iOS 26 系统玻璃

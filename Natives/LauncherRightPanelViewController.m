@@ -1563,7 +1563,7 @@ static void *ProgressObserverContext = &ProgressObserverContext;
                 NSLog(@"[JIT-FLOW] [RightPanel] verified before launch (writable JIT region=%p)",
                       AMEJITVerifiedRegionPtr());
                 // 后台态 dismiss 的 completion 可能悬空，completion:nil + 直接执行。
-                [alert dismissViewControllerAnimated:YES completion:nil];
+                [alert dismissViewControllerAnimated:NO completion:nil];   // instant: the game screen is presented next
                 // 等待成功不等于能安全启动：TXM 上调试器可能在等待期间再次脱离，
                 // 存活性复查不过就重挂。
                 if (DeviceHasJITFlags(JIT_FLAG_FORCE_MIRRORED | JIT_FLAG_HAS_TXM) &&
@@ -1572,7 +1572,7 @@ static void *ProgressObserverContext = &ProgressObserverContext;
                     NSLog(@"[JIT] [RightPanel] wait satisfied but JIT26 debugger is gone -- re-attaching before launch");
                     [self jit_reattachJIT26ThenLaunch:handler];
                 } else {
-                    handler();
+                    dispatch_async(dispatch_get_main_queue(), handler);
                 }
             } else {
                 // ★ [JIT-FLOW] 外部工具（如 StikDebug）可能已弹自己的「jit complete」，
@@ -1635,12 +1635,21 @@ static void *ProgressObserverContext = &ProgressObserverContext;
                 [UIApplication.sharedApplication endBackgroundTask:jit_bgt];
                 jit_bgt = UIBackgroundTaskInvalid;
             }
-            [alert dismissViewControllerAnimated:YES completion:nil];
-            if (ok) {
-                if (handler) handler();
-            } else {
-                [self jit_showTimeoutRetryAlert:handler];
-            }
+            // Continue only after the alert is fully gone: presenting the game
+            // screen while the alert is still animating away makes UIKit drop
+            // it ("Attempt to present while a presentation is in progress"),
+            // and the launch silently does nothing.
+            void (^next)(void) = ^{
+                if (ok) {
+                    if (handler) handler();
+                } else {
+                    [self jit_showTimeoutRetryAlert:handler];
+                }
+            };
+            // Dismiss without animation (completion blocks can be dropped while
+            // backgrounded), then continue on the next run-loop turn.
+            [alert dismissViewControllerAnimated:NO completion:nil];
+            dispatch_async(dispatch_get_main_queue(), next);
         }, @"RightPanel reattach wait");
     });
 }
