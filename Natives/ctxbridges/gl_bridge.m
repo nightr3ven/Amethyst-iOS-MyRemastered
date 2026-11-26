@@ -160,6 +160,22 @@ static void ame77_record_present(uint64_t dur_us, uint64_t now_us) {
     ame77_present_sum_us += dur_us;
     ame77_present_count++;
     ame77_last_swap_end_us = now_us;
+
+    // Perf: report the two frame phases every 5 s so a log shows whether the
+    // frame rate is held back by the CPU (build) or by GPU/display (present).
+    static uint64_t window_start_us = 0;
+    if (window_start_us == 0) window_start_us = now_us;
+    if (now_us - window_start_us >= 5000000ull && ame77_present_count > 0) {
+        double secs = (double)(now_us - window_start_us) / 1e6;
+        uint32_t frames = ame77_present_count;
+        double pAvg = (double)ame77_present_sum_us / frames / 1000.0;
+        double bAvg = ame77_build_count ? (double)ame77_build_sum_us / ame77_build_count / 1000.0 : 0;
+        NSLog(@"[PERF-FRAME] %.1f fps | build avg %.1f ms max %u ms | present avg %.1f ms max %u ms",
+              frames / secs, bAvg, ame77_build_max_us / 1000u, pAvg, ame77_present_max_us / 1000u);
+        ame77_present_sum_us = 0; ame77_present_max_us = 0; ame77_present_count = 0;
+        ame77_build_sum_us = 0; ame77_build_max_us = 0; ame77_build_count = 0;
+        window_start_us = now_us;
+    }
 }
 
 // ============================================================================
