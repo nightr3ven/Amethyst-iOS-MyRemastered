@@ -6,6 +6,7 @@
 // End of Source File Header
 
 #include "drawing.h"
+#include "perf_counters.h"
 #include "restart.h"
 #include "multidraw.h"
 #include "buffer.h"
@@ -363,6 +364,7 @@ void prepareForDraw(int api) {
 // legacy path older mods and GlStateManager compat code can still take, and the
 // TBO sampler rewiring must cover it either way.
 void glDrawArrays(GLenum mode, GLint first, GLsizei count) {
+    MG_PERF_SCOPE(MGP_DRAW);
     LOG()
     LOG_D("glDrawArrays, mode: %d, first: %d, count: %d", mode, first, count)
     prepareForDraw(1);
@@ -402,6 +404,7 @@ GLAPI GLAPIENTRY void glDrawArraysInstancedARB(GLenum mode, GLint first, GLsizei
 #endif
 
 void glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void* indices, GLsizei primcount) {
+    MG_PERF_SCOPE(MGP_DRAW);
     LOG()
     LOG_D("glDrawElementsInstanced, mode: %d, count: %d, type: %d, indices: %p, primcount: %d", mode, count, type,
           indices, primcount)
@@ -415,6 +418,7 @@ void glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void
 }
 
 void glDrawElements(GLenum mode, GLsizei count, GLenum type, const void* indices) {
+    MG_PERF_SCOPE(MGP_DRAW);
     LOG()
     LOG_D("glDrawElements, mode: %d, count: %d, type: %d, indices: %p", mode, count, type, indices)
     prepareForDraw(2);
@@ -499,6 +503,7 @@ void* basevertex_staging(size_t bytes) {
 } // namespace
 
 void glDrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type, const void* indices, GLint basevertex) {
+    MG_PERF_SCOPE(MGP_DRAW);
     LOG()
     LOG_D("glDrawElementsBaseVertex, mode: %d, count: %d, type: %d, indices: %p, basevertex: %d", mode, count, type,
           indices, basevertex);
@@ -659,6 +664,7 @@ struct restart_guard_t {
 } // namespace
 
 void glDrawRangeElements(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void* indices) {
+    MG_PERF_SCOPE(MGP_DRAW);
     LOG()
     LOG_D("glDrawRangeElements, mode: %d, start: %u, end: %u, count: %d, type: %d", mode, start, end, count, type)
     prepareForDraw();
@@ -690,6 +696,7 @@ void glDrawRangeElementsBaseVertex(GLenum mode, GLuint start, GLuint end, GLsize
 
 void glDrawElementsInstancedBaseVertex(GLenum mode, GLsizei count, GLenum type, const void* indices,
                                        GLsizei instancecount, GLint basevertex) {
+    MG_PERF_SCOPE(MGP_DRAW);
     LOG()
     LOG_D("glDrawElementsInstancedBaseVertex, mode: %d, count: %d, type: %d, instancecount: %d, basevertex: %d", mode,
           count, type, instancecount, basevertex)

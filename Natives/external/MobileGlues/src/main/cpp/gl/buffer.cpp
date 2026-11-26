@@ -6,6 +6,7 @@
 // End of Source File Header
 
 #include "buffer.h"
+#include "perf_counters.h"
 #include "../egl/context.h"
 #include <mutex>
 #include <memory>
@@ -1094,6 +1095,8 @@ struct borrowed_target_t {
 } // namespace
 
 void glBufferData(GLenum target, GLsizeiptr size, const void* data, GLenum usage) {
+    MG_PERF_SCOPE(MGP_BUFFER);
+    MG_PERF_BYTES(size);
     LOG()
     LOG_D("glBufferData, target = %s, size = %d, data = 0x%x, usage = %s", glEnumToString(target), size, data,
           glEnumToString(usage))
@@ -1110,6 +1113,8 @@ void glBufferData(GLenum target, GLsizeiptr size, const void* data, GLenum usage
 // Both of these were plain pass-throughs in gl/gl_native.cpp. They live here now
 // so that GL_PARAMETER_BUFFER reaches the driver as a target it understands.
 void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void* data) {
+    MG_PERF_SCOPE(MGP_BUFFER);
+    MG_PERF_BYTES(size);
     LOG()
     LOG_D("glBufferSubData, target = %s, offset = %p, size = %zi", glEnumToString(target), (void*)offset, size)
     borrowed_target_t t(target);
@@ -1128,6 +1133,7 @@ void glGetBufferParameteriv(GLenum target, GLenum pname, GLint* params) {
 }
 
 void* glMapBuffer(GLenum target, GLenum access) {
+    MG_PERF_SCOPE(MGP_MAP);
     LOG()
     LOG_D("glMapBuffer, target = %s, access = %s", glEnumToString(target), glEnumToString(access))
     if (g_gles_caps.GL_OES_mapbuffer) {
@@ -1176,6 +1182,7 @@ extern "C"
 #endif
 
 void* glMapBufferRange(GLenum target, GLintptr offset, GLsizeiptr length, GLbitfield access) {
+    MG_PERF_SCOPE(MGP_MAP);
     LOG()
     if (global_settings.buffer_coherent_as_flush) access &= ~GL_MAP_FLUSH_EXPLICIT_BIT;
     //    access |= GL_MAP_UNSYNCHRONIZED_BIT;

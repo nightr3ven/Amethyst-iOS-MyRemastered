@@ -6,6 +6,7 @@
 // End of Source File Header
 
 #include "multidraw.h"
+#include "perf_counters.h"
 #include "../config/settings.h"
 #include "buffer.h"
 #include "enable.h"
@@ -584,6 +585,8 @@ typedef void (*glMultiDrawElements_t)(GLenum, const GLsizei*, GLenum, const void
 
 void glMultiDrawElements(GLenum mode, const GLsizei* count, GLenum type, const void* const* indices,
                          GLsizei primcount) {
+    MG_PERF_SCOPE(MGP_MULTIDRAW);
+    MG_PERF_SUBDRAWS(primcount);
     static glMultiDrawElements_t func_ptr = nullptr;
 
     if (func_ptr == nullptr) {
@@ -617,6 +620,8 @@ typedef void (*glMultiDrawElementsBaseVertex_t)(GLenum, GLsizei*, GLenum, const 
 
 void glMultiDrawElementsBaseVertex(GLenum mode, GLsizei* counts, GLenum type, const void* const* indices,
                                    GLsizei primcount, const GLint* basevertex) {
+    MG_PERF_SCOPE(MGP_MULTIDRAW);
+    MG_PERF_SUBDRAWS(primcount);
     static glMultiDrawElementsBaseVertex_t func_ptr = nullptr;
 
     if (func_ptr == nullptr) {
@@ -2257,6 +2262,8 @@ void mg_glMultiDrawArrays_multiindirect(GLenum mode, const GLint* first, const G
 typedef void (*glMultiDrawArrays_t)(GLenum, const GLint*, const GLsizei*, GLsizei);
 
 void glMultiDrawArrays(GLenum mode, const GLint* first, const GLsizei* count, GLsizei drawcount) {
+    MG_PERF_SCOPE(MGP_MULTIDRAW);
+    MG_PERF_SUBDRAWS(drawcount);
     static glMultiDrawArrays_t func_ptr = nullptr;
 
     if (func_ptr == nullptr) {
@@ -2311,6 +2318,8 @@ void glMultiDrawArraysIndirect(GLenum mode, const void* indirect, GLsizei drawco
 
 void glMultiDrawElementsIndirect(GLenum mode, GLenum type, const void* indirect, GLsizei drawcount,
                                  GLsizei stride) {
+    MG_PERF_SCOPE(MGP_MULTIDRAW);
+    MG_PERF_SUBDRAWS(drawcount);
     LOG()
     if (drawcount <= 0) return;
     if (stride < 0) {
@@ -2691,3 +2700,18 @@ extern "C"
     }
 }
 #endif
+
+// Air reads and resets these every few seconds (see gl_bridge.m [PERF-GL]).
+// out arrays: calls[4], usecs[4]  (draw, multidraw, buffer upload, map).
+extern "C" __attribute__((visibility("default"))) void mg_perf_snapshot(uint64_t* calls, uint64_t* usecs,
+                                                                        uint64_t* subdraws, uint64_t* bytes) {
+    static mach_timebase_info_data_t tb = {0, 0};
+    if (tb.denom == 0) mach_timebase_info(&tb);
+    for (int c = 0; c < MGP_COUNT; c++) {
+        calls[c] = mg_perf_calls[c].exchange(0, std::memory_order_relaxed);
+        uint64_t ticks = mg_perf_ticks[c].exchange(0, std::memory_order_relaxed);
+        usecs[c] = ticks * tb.numer / tb.denom / 1000;
+    }
+    *subdraws = mg_perf_subdraws.exchange(0, std::memory_order_relaxed);
+    *bytes = mg_perf_bytes.exchange(0, std::memory_order_relaxed);
+}

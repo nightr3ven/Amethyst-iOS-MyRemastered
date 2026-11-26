@@ -155,6 +155,80 @@ static void ame77_record_build(uint64_t now_us) {
 
 // Task 77：present 相位计时（eglSwapBuffers 内部时长），成功失败都计
 // （失败的慢 present 同样是归因证据）。
+// ---------------------------------------------------------------------------
+// [PERF-THREADS] / [PERF-GL]: every 5 s, log which threads used the CPU and how
+// much time MobileGlues spent in draw / upload calls. thread_info only reads
+// counters (no thread suspension), so it is safe next to the JIT debugger.
+// ---------------------------------------------------------------------------
+#include <mach/mach.h>
+#include <dlfcn.h>
+
+typedef struct { uint64_t tid; uint64_t ns; } AmePerfThreadSample;
+
+static void ame_perf_log_threads(double secs) {
+    static AmePerfThreadSample prev[1024];
+    static int prevCount = 0;
+    static AmePerfThreadSample cur[1024];
+    int curCount = 0;
+
+    thread_act_array_t threads = NULL;
+    mach_msg_type_number_t n = 0;
+    if (task_threads(mach_task_self(), &threads, &n) != KERN_SUCCESS) return;
+
+    typedef struct { double pct; char name[64]; } Row;
+    Row top[8]; int topCount = 0;
+    double total = 0;
+    for (mach_msg_type_number_t i = 0; i < n; i++) {
+        thread_identifier_info_data_t idi; mach_msg_type_number_t c1 = THREAD_IDENTIFIER_INFO_COUNT;
+        thread_extended_info_data_t ext; mach_msg_type_number_t c2 = THREAD_EXTENDED_INFO_COUNT;
+        if (thread_info(threads[i], THREAD_IDENTIFIER_INFO, (thread_info_t)&idi, &c1) == KERN_SUCCESS &&
+            thread_info(threads[i], THREAD_EXTENDED_INFO, (thread_info_t)&ext, &c2) == KERN_SUCCESS) {
+            uint64_t ns = ext.pth_user_time + ext.pth_system_time;
+            uint64_t before = 0; BOOL known = NO;
+            for (int k = 0; k < prevCount; k++) if (prev[k].tid == idi.thread_id) { before = prev[k].ns; known = YES; break; }
+            if (curCount < 1024) cur[curCount++] = (AmePerfThreadSample){ idi.thread_id, ns };
+            if (known && ns > before) {
+                double pct = (double)(ns - before) / (secs * 1e9) * 100.0;
+                total += pct;
+                if (pct >= 2.0 && (topCount < 8 || pct > top[7].pct)) {
+                    int pos = topCount < 8 ? topCount++ : 7;
+                    top[pos].pct = pct;
+                    snprintf(top[pos].name, sizeof top[pos].name, "%s", ext.pth_name[0] ? ext.pth_name : "?");
+                    for (int a = pos; a > 0 && top[a].pct > top[a-1].pct; a--) { Row t = top[a]; top[a] = top[a-1]; top[a-1] = t; }
+                }
+            }
+        }
+        mach_port_deallocate(mach_task_self(), threads[i]);
+    }
+    vm_deallocate(mach_task_self(), (vm_address_t)threads, n * sizeof(thread_t));
+    memcpy(prev, cur, curCount * sizeof cur[0]); prevCount = curCount;
+    if (total <= 0) return;
+
+    NSMutableString *line = [NSMutableString stringWithFormat:@"[PERF-THREADS] total %.0f%% of one core, %u threads |", total, n];
+    for (int i = 0; i < topCount; i++) [line appendFormat:@" %s %.0f%%%@", top[i].name, top[i].pct, i + 1 < topCount ? @"," : @""];
+    NSLog(@"%@", line);
+}
+
+static void ame_perf_log_gl(uint32_t frames) {
+    typedef void (*snap_fn)(uint64_t*, uint64_t*, uint64_t*, uint64_t*);
+    static snap_fn snap = NULL; static BOOL looked = NO;
+    if (!looked) {
+        looked = YES;
+        void *h = dlopen("@rpath/libmobileglues.dylib", RTLD_NOLOAD | RTLD_LAZY);
+        if (!h) h = dlopen("libmobileglues.dylib", RTLD_NOLOAD | RTLD_LAZY);
+        snap = (snap_fn)dlsym(h ?: RTLD_DEFAULT, "mg_perf_snapshot");
+        if (!snap) snap = (snap_fn)dlsym(RTLD_DEFAULT, "mg_perf_snapshot");
+        NSLog(@"[PERF-GL] MobileGlues counters %@", snap ? @"found" : @"not available");
+    }
+    if (!snap || frames == 0) return;
+    uint64_t calls[4], us[4], sub = 0, bytes = 0;
+    snap(calls, us, &sub, &bytes);
+    double f = frames;
+    NSLog(@"[PERF-GL] per frame: draw %.0f calls %.2f ms | multidraw %.0f calls (%.0f sub) %.2f ms | upload %.0f calls %.0f KB %.2f ms | map %.0f calls %.2f ms",
+          calls[0] / f, us[0] / f / 1000.0, calls[1] / f, sub / f, us[1] / f / 1000.0,
+          calls[2] / f, bytes / f / 1024.0, us[2] / f / 1000.0, calls[3] / f, us[3] / f / 1000.0);
+}
+
 static void ame77_record_present(uint64_t dur_us, uint64_t now_us) {
     if (dur_us > ame77_present_max_us) ame77_present_max_us = (uint32_t)dur_us;
     ame77_present_sum_us += dur_us;
@@ -172,6 +246,8 @@ static void ame77_record_present(uint64_t dur_us, uint64_t now_us) {
         double bAvg = ame77_build_count ? (double)ame77_build_sum_us / ame77_build_count / 1000.0 : 0;
         NSLog(@"[PERF-FRAME] %.1f fps | build avg %.1f ms max %u ms | present avg %.1f ms max %u ms",
               frames / secs, bAvg, ame77_build_max_us / 1000u, pAvg, ame77_present_max_us / 1000u);
+        ame_perf_log_gl(frames);
+        ame_perf_log_threads(secs);
         ame77_present_sum_us = 0; ame77_present_max_us = 0; ame77_present_count = 0;
         ame77_build_sum_us = 0; ame77_build_max_us = 0; ame77_build_count = 0;
         window_start_us = now_us;
