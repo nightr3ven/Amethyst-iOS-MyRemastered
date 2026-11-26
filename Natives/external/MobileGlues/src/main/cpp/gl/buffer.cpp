@@ -101,6 +101,7 @@ struct buffer_ctx_state_t { // private to one context
     // The driver's generic GL_UNIFORM_BUFFER binding was left on a proxy and
     // must be put back before anything addresses that target.
     bool ubo_generic_dirty = false;
+    GLuint upload_stage = 0; // driver name of the staging buffer for unaligned uploads
 };
 
 std::mutex g_buf_mutex;
@@ -1425,6 +1426,39 @@ void glBufferData(GLenum target, GLsizeiptr size, const void* data, GLenum usage
 
 // Both of these were plain pass-throughs in gl/gl_native.cpp. They live here now
 // so that GL_PARAMETER_BUFFER reaches the driver as a target it understands.
+// ANGLE's Metal backend uploads into a buffer the GPU is still reading with a
+// blit, which never waits -- but only when offset and size are multiples of 4
+// (BufferMtl::setSubDataImpl). Anything else falls back to a CPU copy into the
+// live buffer, which first submits the GPU's queued work and waits for it to
+// finish. Chunk uploads on 26.x hit that and stalled the render thread for
+// 30-100 ms at a time (Air's sampler: CommandBuffer::commit under
+// glBufferSubData). Such an upload goes into a fresh staging buffer instead and
+// is copied across on the GPU; Metal on iOS blits at any byte offset.
+// MG_UNALIGNED_STAGING=0 turns it off.
+static bool mg_stage_unaligned_upload(GLenum target, GLintptr offset, GLsizeiptr size, const void* data) {
+    static const bool on = [] {
+        const char* e = getenv("MG_UNALIGNED_STAGING");
+        return !(e && e[0] == '0');
+    }();
+    if (!on || data == nullptr || offset < 0 || size < 16 || ((offset | size) & 3) == 0) return false;
+    if (GLES.glCopyBufferSubData == nullptr) return false;
+    const GLenum stage_target = target == GL_COPY_READ_BUFFER ? GL_COPY_WRITE_BUFFER : GL_COPY_READ_BUFFER;
+    GLuint& stage = g_bc->upload_stage;
+    if (stage == 0) GLES.glGenBuffers(1, &stage);
+    // Power-of-two sizes so ANGLE's buffer cache, which matches exact sizes,
+    // keeps handing back recycled Metal buffers.
+    GLsizeiptr bucket = 4096;
+    while (bucket < size) bucket <<= 1;
+    GLES.glBindBuffer(stage_target, stage);
+    // Respecifying gives a Metal buffer the GPU isn't using, so the write
+    // below is a plain CPU copy with no wait.
+    GLES.glBufferData(stage_target, bucket, nullptr, GL_STREAM_DRAW);
+    GLES.glBufferSubData(stage_target, 0, size, data);
+    GLES.glCopyBufferSubData(stage_target, target, 0, offset, size);
+    GLES.glBindBuffer(stage_target, mg_driver_bound_buffer(stage_target));
+    return true;
+}
+
 void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void* data) {
     MG_PERF_SCOPE(MGP_BUFFER);
     MG_PERF_BYTES(size);
@@ -1432,7 +1466,7 @@ void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void
     LOG_D("glBufferSubData, target = %s, offset = %p, size = %zi", glEnumToString(target), (void*)offset, size)
     ubo_restore_generic_for(target);
     borrowed_target_t t(target);
-    GLES.glBufferSubData(t.target, offset, size, data);
+    if (!mg_stage_unaligned_upload(t.target, offset, size, data)) GLES.glBufferSubData(t.target, offset, size, data);
     CHECK_GL_ERROR
     if (offset >= 0 && size > 0)
         ubo_mirror_write(find_bound_buffer_by_target(target), static_cast<size_t>(offset), data,
