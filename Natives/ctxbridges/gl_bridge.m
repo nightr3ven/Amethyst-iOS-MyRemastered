@@ -1560,6 +1560,51 @@ static bool dlsym_EGL() {
 
 // 只应在 gl_init_context（eglChooseConfig 之后、eglBindAPI/eglCreateContext 之前）
 // 调用一次。返回 YES 表示生命周期 EGL 已切换到 MobileGlues 前端。
+
+// ============================================================================
+// Perf: ANGLE keeps base-vertex and multi-draw behind GL_ANGLE_request_extension
+// (they are "requestable", not enabled). Without them MobileGlues rebases every
+// Sodium batch on the CPU with a GPU readback, which is what makes FPS fall off
+// as render distance goes up. Request them on every context before use.
+// Opt out with environment variable AMETHYST_NO_ANGLE_EXT=1.
+// ============================================================================
+static void ame_angle_request_draw_extensions(const char *where) {
+    const char *off = getenv("AMETHYST_NO_ANGLE_EXT");
+    if (off && off[0] == '1') return;
+    void *h = dlopen("@executable_path/Frameworks/libGLESv2.framework/libGLESv2", RTLD_NOW | RTLD_NOLOAD);
+    if (!h) return;
+    void (*request)(const char *) = dlsym(h, "glRequestExtensionANGLE");
+    const unsigned char *(*getStringi)(unsigned, unsigned) = dlsym(h, "glGetStringi");
+    void (*getIntegerv)(unsigned, int *) = dlsym(h, "glGetIntegerv");
+    unsigned (*getError)(void) = dlsym(h, "glGetError");
+    if (!request || !getStringi || !getIntegerv) return;
+    static const char *const kWanted[] = {
+        "GL_EXT_draw_elements_base_vertex", "GL_OES_draw_elements_base_vertex",
+        "GL_ANGLE_base_vertex_base_instance", "GL_ANGLE_multi_draw", "GL_EXT_multi_draw_arrays",
+    };
+    int n = 0;
+    getIntegerv(0x93A9 /* GL_NUM_REQUESTABLE_EXTENSIONS_ANGLE */, &n);
+    NSMutableArray *requested = [NSMutableArray array];
+    for (int i = 0; i < n; i++) {
+        const char *e = (const char *)getStringi(0x93A8 /* GL_REQUESTABLE_EXTENSIONS_ANGLE */, (unsigned)i);
+        if (!e) continue;
+        for (size_t k = 0; k < sizeof(kWanted) / sizeof(*kWanted); k++) {
+            if (strcmp(e, kWanted[k]) == 0) { request(e); [requested addObject:@(e)]; }
+        }
+    }
+    if (getError) while (getError() != 0) {}
+    NSLog(@"[PERF-CAPS] %s: requestable=%d, enabled [%@]", where, n, [requested componentsJoinedByString:@" "]);
+}
+
+static void ame_angle_request_for_context(void *ctx) {
+    static NSMutableSet *seen;
+    if (!seen) seen = [NSMutableSet set];
+    NSValue *key = [NSValue valueWithPointer:ctx];
+    if ([seen containsObject:key]) return;
+    [seen addObject:key];
+    ame_angle_request_draw_extensions("context");
+}
+
 static BOOL ame_mgBootstrap(EGLDisplay dpy, EGLConfig config) {
     if (ame_mgBootstrapTried) return ame_mgFrontendActive;
     ame_mgBootstrapTried = YES;
@@ -1588,6 +1633,9 @@ static BOOL ame_mgBootstrap(EGLDisplay dpy, EGLConfig config) {
     BOOL ok = NO;
     if (pb != EGL_NO_SURFACE && tmpCtx != EGL_NO_CONTEXT &&
         ame_raw_make_current(dpy, pb, pb, tmpCtx)) {
+        // Enable ANGLE's requestable draw extensions first so MobileGlues'
+        // capability check sees them and picks native base-vertex draws.
+        ame_angle_request_draw_extensions("bootstrap");
         // 2) 绑定 gles/egl 后端句柄 + 真实 caps 检测（MobileGlues 内部幂等）
         ame_mg_init_gles();
         ok = YES;
@@ -1941,6 +1989,7 @@ void gl_make_current(gl_render_window_t* bundle) {
 
     if(handle.eglMakeCurrent(g_EglDisplay, bundle->surface, bundle->surface, bundle->context)) {
         currentBundle = (basic_render_window_t *)bundle;
+        ame_angle_request_for_context((void *)bundle->context);
         if (ame_mgFrontendActive) {
             NSLog(@"[MG-Bridge] eglMakeCurrent via frontend OK (ctx=%p) -- "
                   @"MGContext tracked, per-context state bound",
