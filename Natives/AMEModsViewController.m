@@ -223,7 +223,12 @@ typedef NS_ENUM(NSInteger, AMEModsSection) {
         message:@"The file is removed from this instance." preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"Delete" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x) {
-        [[ModService sharedService] deleteMod:m error:nil];
+        NSError *err;
+        if (![[ModService sharedService] deleteMod:m error:&err]) {
+            UIAlertController *f = [UIAlertController alertControllerWithTitle:@"Couldn't delete" message:err.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
+            [f addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
+            [self presentViewController:f animated:YES completion:nil];
+        }
         [self reload];
     }]];
     [self presentViewController:a animated:YES completion:nil];

@@ -366,7 +366,10 @@
                 // 检查缓存
                 if (![self needsRescanForPath:fullPath]) {
                     ModItem *cached = [self cachedModForPath:fullPath];
-                    if (cached) {
+                    // A cached item can be stale: toggling renames the file and updates the
+                    // same object in place, and a rename keeps the mtime. Only reuse it while
+                    // it still points at this exact file.
+                    if (cached && [cached.filePath isEqualToString:fullPath]) {
                         [items addObject:cached];
                         continue;
                     }
@@ -484,33 +487,62 @@
 }
 
 // ---------- 文件操作（启用/禁用、删除）----------
+- (void)forgetCachedPath:(NSString *)path {
+    if (!path) return;
+    dispatch_barrier_async(self.cacheQueue, ^{
+        [self.metadataCache removeObjectForKey:path];
+        [self.checkpointTimes removeObjectForKey:path];
+    });
+}
+
+/// The file's other name: "x.jar" <-> "x.jar.disabled".
+static NSString *AMEModTwinPath(NSString *path) {
+    if ([path.lowercaseString hasSuffix:@".jar.disabled"]) return [path substringToIndex:path.length - 9];
+    return [path stringByAppendingString:@".disabled"];
+}
+
 - (BOOL)toggleEnableForMod:(ModItem *)mod error:(NSError **)error {
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSString *currentPath = mod.filePath;
-    NSString *newPath;
-
-    if (mod.disabled) {
-        if ([currentPath.lowercaseString hasSuffix:@".jar.disabled"]) {
-            newPath = [currentPath substringToIndex:currentPath.length - 9];
-        } else {
-            if (error) *error = [NSError errorWithDomain:@"ModServiceError" code:101 userInfo:@{NSLocalizedDescriptionKey:localize(@"i18n_str_452", nil)}];
-            return NO;
-        }
+    // If the item is out of date, work from whichever name is actually on disk.
+    if (![fileManager fileExistsAtPath:currentPath] && [fileManager fileExistsAtPath:AMEModTwinPath(currentPath)]) {
+        currentPath = AMEModTwinPath(currentPath);
+    }
+    BOOL disabledOnDisk = [currentPath.lowercaseString hasSuffix:@".jar.disabled"];
+    NSString *newPath = AMEModTwinPath(currentPath);
+    if (!disabledOnDisk && ![currentPath.lowercaseString hasSuffix:@".jar"]) {
+        if (error) *error = [NSError errorWithDomain:@"ModServiceError" code:101 userInfo:@{NSLocalizedDescriptionKey:localize(@"i18n_str_452", nil)}];
+        return NO;
+    }
+    // The UI asked for the opposite of what the item thought; if disk already matches, just sync.
+    if (disabledOnDisk != mod.disabled) {
+        newPath = currentPath;
     } else {
-        newPath = [currentPath stringByAppendingString:@".disabled"];
+        [fileManager removeItemAtPath:newPath error:nil]; // a leftover twin would block the rename
+        if (![fileManager moveItemAtPath:currentPath toPath:newPath error:error]) return NO;
     }
-
-    BOOL success = [fileManager moveItemAtPath:currentPath toPath:newPath error:error];
-    if (success) {
-        mod.filePath = newPath;
-        mod.fileName = [newPath lastPathComponent];
-        [mod refreshDisabledFlag];
-    }
-    return success;
+    [self forgetCachedPath:mod.filePath];
+    [self forgetCachedPath:currentPath];
+    [self forgetCachedPath:newPath];
+    mod.filePath = newPath;
+    mod.fileName = [newPath lastPathComponent];
+    [mod refreshDisabledFlag];
+    return YES;
 }
 
 - (BOOL)deleteMod:(ModItem *)mod error:(NSError **)error {
-    return [[NSFileManager defaultManager] removeItemAtPath:mod.filePath error:error];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *path = mod.filePath;
+    NSString *twin = AMEModTwinPath(path);
+    BOOL ok = NO;
+    if ([fm fileExistsAtPath:path]) ok = [fm removeItemAtPath:path error:error];
+    if ([fm fileExistsAtPath:twin]) ok = [fm removeItemAtPath:twin error:error] || ok;
+    if (!ok && error && !*error) {
+        *error = [NSError errorWithDomain:@"ModServiceError" code:102 userInfo:@{NSLocalizedDescriptionKey:@"The mod file wasn't found."}];
+    }
+    [self forgetCachedPath:path];
+    [self forgetCachedPath:twin];
+    return ok;
 }
 
 // ---------- 下载（PLDownloadClient 统一下载器：镜像候选 + SHA1 校验 + 增量命中 + 断点续传）----------
