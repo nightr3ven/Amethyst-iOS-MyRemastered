@@ -243,6 +243,9 @@ static void ame_perf_log_gl(uint32_t frames) {
 static thread_t g_ame_render_thread = MACH_PORT_NULL;
 #define AME_SAMPLES_MAX 4096
 static uint64_t g_ame_pc[AME_SAMPLES_MAX], g_ame_lr[AME_SAMPLES_MAX];
+#define AME_FRAMES 8
+static uint64_t g_ame_ret[AME_SAMPLES_MAX][AME_FRAMES];
+static uintptr_t g_ame_stack_lo = 0, g_ame_stack_hi = 0;
 static int g_ame_sample_count = 0;
 
 static NSString *ame_perf_where(uint64_t addr, BOOL withSymbol) {
@@ -266,9 +269,16 @@ static void ame_perf_flush_samples(void) {
         NSString *img = ame_perf_where(g_ame_pc[i], NO);
         NSString *sym = ame_perf_where(g_ame_pc[i], YES);
         if (ame_perf_is_libsystem(img)) {
-            // memcpy / locks etc.: also say who called them.
-            sym = [sym stringByAppendingFormat:@" <- %@", ame_perf_where(g_ame_lr[i], YES)];
-            img = [img stringByAppendingFormat:@" <- %@", ame_perf_where(g_ame_lr[i], NO)];
+            // Waits / memcpy / locks: name the first caller outside the system libraries.
+            uint64_t who = g_ame_lr[i];
+            NSString *whoImg = ame_perf_where(who, NO);
+            for (int k = 0; k < AME_FRAMES && ame_perf_is_libsystem(whoImg); k++) {
+                if (!g_ame_ret[i][k]) break;
+                who = g_ame_ret[i][k];
+                whoImg = ame_perf_where(who, NO);
+            }
+            sym = [sym stringByAppendingFormat:@" <- %@", ame_perf_where(who, YES)];
+            img = [img stringByAppendingFormat:@" <- %@", whoImg];
         }
         byImage[img] = @(byImage[img].intValue + 1);
         bySymbol[sym] = @(bySymbol[sym].intValue + 1);
@@ -295,6 +305,18 @@ static void *ame_perf_sampler_main(void *arg) {
         if (thread_suspend(t) != KERN_SUCCESS) continue;
         arm_thread_state64_t st; mach_msg_type_number_t cnt = ARM_THREAD_STATE64_COUNT;
         kern_return_t kr = thread_get_state(t, ARM_THREAD_STATE64, (thread_state_t)&st, &cnt);
+        if (kr == KERN_SUCCESS && g_ame_sample_count < AME_SAMPLES_MAX) {
+            // Frame-pointer walk, strictly inside the render thread's own stack.
+            uintptr_t fp = (uintptr_t)arm_thread_state64_get_fp(st);
+            for (int k = 0; k < AME_FRAMES; k++) {
+                g_ame_ret[g_ame_sample_count][k] = 0;
+                if (fp < g_ame_stack_lo || fp + 16 > g_ame_stack_hi || (fp & 7)) continue;
+                uintptr_t next = ((uintptr_t *)fp)[0], ret = ((uintptr_t *)fp)[1];
+                g_ame_ret[g_ame_sample_count][k] = (uint64_t)ptrauth_strip((void *)ret, ptrauth_key_return_address);
+                if (next <= fp) { fp = 0; continue; }
+                fp = next;
+            }
+        }
         thread_resume(t);
         if (kr == KERN_SUCCESS && g_ame_sample_count < AME_SAMPLES_MAX) {
             g_ame_pc[g_ame_sample_count] = (uint64_t)ptrauth_strip((void *)arm_thread_state64_get_pc(st), ptrauth_key_return_address);
@@ -313,6 +335,9 @@ static void ame_perf_sampler_note_render_thread(void) {
     started = YES;
     const char *e = getenv("AMETHYST_PERF_SAMPLER");
     if (e && e[0] == '0') return;
+    pthread_t self = pthread_self();
+    g_ame_stack_hi = (uintptr_t)pthread_get_stackaddr_np(self);
+    g_ame_stack_lo = g_ame_stack_hi - pthread_get_stacksize_np(self);
     g_ame_render_thread = mach_thread_self();
     pthread_t th;
     if (pthread_create(&th, NULL, ame_perf_sampler_main, NULL) == 0) pthread_detach(th);

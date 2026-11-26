@@ -18,8 +18,23 @@
 #define MOUSE_MAX_ACCELERATION 2
 
 CFAbsoluteTime lastFrameTime;
-CGFloat lastXValue; // lastHorizontalValue
-CGFloat lastYValue; // lastVerticalValue
+CGFloat lastXValue; // lastHorizontalValue (right stick)
+CGFloat lastYValue; // lastVerticalValue (right stick)
+// The left stick moves the cursor only in menus. It has its own values so the
+// two sticks don't overwrite each other (that made the menu cursor jitter).
+static CGFloat leftXValue, leftYValue;
+
+// Radial dead zone on top of GameController's own: cheap pads drift a little
+// past it, which nudged the cursor/camera every frame. Rescales the rest so
+// small deliberate motion still works.
+static void AMEApplyDeadZone(CGFloat *x, CGFloat *y) {
+    const CGFloat dz = 0.12;
+    CGFloat m = sqrt((*x) * (*x) + (*y) * (*y));
+    if (m < dz) { *x = 0; *y = 0; return; }
+    CGFloat scaled = MIN(1.0, (m - dz) / (1.0 - dz));
+    *x = *x / m * scaled;
+    *y = *y / m * scaled;
+}
 
 @implementation ControllerInput
 
@@ -143,11 +158,13 @@ BOOL leftShiftHeld;
 
     gamepad.leftThumbstick.valueChangedHandler = ^(GCControllerDirectionPad * _Nonnull dpad, float xValue, float yValue) {
         if (!isGrabbing) {
-            // Update virtual mouse position
-            lastXValue = xValue;
-            lastYValue = yValue;
+            // Menus: the left stick moves the cursor.
+            leftXValue = xValue;
+            leftYValue = yValue;
+            AMEApplyDeadZone(&leftXValue, &leftYValue);
             return;
         }
+        leftXValue = 0; leftYValue = 0;
 
         static char lastLThumbDirection = -2;
         char direction = -1;
@@ -185,6 +202,7 @@ BOOL leftShiftHeld;
         // Camera in game; in menus it moves the cursor like the left stick.
         lastXValue = xValue;
         lastYValue = yValue;
+        AMEApplyDeadZone(&lastXValue, &lastYValue);
     };
     gamepad.leftThumbstickButton.pressedChangedHandler = ^(GCControllerButtonInput * _Nonnull button, float value, BOOL pressed) {
         [self sendKeyEvent:GLFW_GAMEPAD_BUTTON_LEFT_THUMB pressed:pressed];
@@ -202,13 +220,18 @@ BOOL leftShiftHeld;
     CGFloat frameTime = CACurrentMediaTime();
     // GameController automatically performs deadzone calculations
     // so we just take the raw input
-    if (lastFrameTime != 0 && (lastXValue != 0 || lastYValue != 0)) {
-        CGFloat acceleration = pow(MathUtils_dist(0, 0, lastXValue, lastYValue), MOUSE_MAX_ACCELERATION); // magnitude
+    // In menus either stick moves the cursor; use whichever is pushed further.
+    CGFloat sx = lastXValue, sy = lastYValue;
+    if (!isGrabbing && (leftXValue * leftXValue + leftYValue * leftYValue) > (sx * sx + sy * sy)) {
+        sx = leftXValue; sy = leftYValue;
+    }
+    if (lastFrameTime != 0 && (sx != 0 || sy != 0)) {
+        CGFloat acceleration = pow(MathUtils_dist(0, 0, sx, sy), MOUSE_MAX_ACCELERATION); // magnitude
         if (acceleration > 1) acceleration = 1;
 
         // Compute delta since last tick time
-        CGFloat deltaX = lastXValue * acceleration * 18;
-        CGFloat deltaY = -lastYValue * acceleration * 18;
+        CGFloat deltaX = sx * acceleration * 18;
+        CGFloat deltaY = -sy * acceleration * 18;
         CGFloat deltaTimeScale = (frameTime - lastFrameTime) / (1.0/60.0); // Scale of 1 = 60Hz
         deltaX *= deltaTimeScale;
         deltaY *= deltaTimeScale;
