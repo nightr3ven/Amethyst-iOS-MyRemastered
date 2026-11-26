@@ -232,13 +232,12 @@ void generateAndSaveDefaultControl() {
             [fm moveItemAtPath:defaultPath toPath:classic error:nil];
         }
     }
-    // Redesign v2: the first modern layout (Amethyst's) piled its top-right
-    // buttons on top of each other on phones. Swap in the new layout once and
-    // keep whatever was there as "default (old).json" so nothing is lost.
-    NSString *v2Marker = [defaultPath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@".ame-layout-v2"];
+    // v3: Amethyst's own layout, verbatim (the user's preference). Whatever was
+    // the default before is kept as "air layout.json".
+    NSString *v2Marker = [defaultPath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@".ame-layout-v3"];
     if (builtinPath && ![fm fileExistsAtPath:v2Marker]) {
         if ([fm fileExistsAtPath:defaultPath]) {
-            NSString *old = [defaultPath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"default (old).json"];
+            NSString *old = [defaultPath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"air layout.json"];
             [fm removeItemAtPath:old error:nil];
             [fm moveItemAtPath:defaultPath toPath:old error:nil];
         }
