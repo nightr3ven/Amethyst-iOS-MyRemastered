@@ -972,6 +972,164 @@ static void mg_md_bv_rebase_per_subdraw(GLenum mode, GLsizei* counts, GLenum typ
     }
 }
 
+
+// ===========================================================================
+// Base vertex via attribute offsets (Air redesign perf work).
+//
+// On an ES 3.0 ANGLE/Metal context there is no base-vertex draw, so the paths
+// below rebase indices on the CPU: map the element buffer for reading (a GPU
+// round trip that waits for all queued work), widen and offset every index,
+// upload the result, then draw. Sodium issues one multi-draw per chunk region,
+// so this ran many times per frame and grew with render distance.
+//
+// The equivalent that needs no index data at all: a base vertex only shifts
+// where vertex 0 is read from. Moving each enabled per-vertex attribute's
+// start offset by basevertex*stride gives the same vertices for the same
+// indices. That is a handful of glVertexAttribPointer calls per sub-draw
+// (cheap driver state), no readback, no copy, no upload.
+//
+// Bails out (returns false, nothing drawn) for anything it can't express:
+// client-side arrays, instanced attributes, unknown types, a negative result.
+// Disable with MG_BV_ATTRIB=0 in the environment.
+// ===========================================================================
+
+struct mg_bv_attrib_t {
+    GLuint index;
+    GLint size;
+    GLenum type;
+    GLboolean normalized;
+    GLboolean integer;
+    GLsizei stride;       // as the application specified it (0 = packed)
+    GLsizei eff_stride;   // actual byte distance between vertices
+    GLuint buffer;
+    uintptr_t offset;
+};
+
+static GLsizei mg_bv_type_bytes(GLenum type, GLint size) {
+    switch (type) {
+    case GL_BYTE:
+    case GL_UNSIGNED_BYTE: return size;
+    case GL_SHORT:
+    case GL_UNSIGNED_SHORT:
+    case GL_HALF_FLOAT:
+    case 0x8D61 /* GL_HALF_FLOAT_OES */: return 2 * size;
+    case GL_INT:
+    case GL_UNSIGNED_INT:
+    case GL_FLOAT:
+    case GL_FIXED: return 4 * size;
+    case GL_INT_2_10_10_10_REV:
+    case GL_UNSIGNED_INT_2_10_10_10_REV: return 4;
+    default: return 0;
+    }
+}
+
+static bool mg_bv_attrib_wanted() {
+    static int cached = -1;
+    if (cached < 0) {
+        const char* v = std::getenv("MG_BV_ATTRIB");
+        cached = (v != nullptr && v[0] == '0') ? 0 : 1;
+        LOG_W_FORCE("[MG] base vertex via attribute offsets: %s", cached ? "on" : "off (MG_BV_ATTRIB=0)")
+    }
+    return cached == 1;
+}
+
+static void mg_bv_apply(const mg_bv_attrib_t* attrs, int n, GLint bv, GLuint* bound_array_buffer) {
+    for (int k = 0; k < n; ++k) {
+        const mg_bv_attrib_t& a = attrs[k];
+        if (*bound_array_buffer != a.buffer) {
+            GLES.glBindBuffer(GL_ARRAY_BUFFER, a.buffer);
+            *bound_array_buffer = a.buffer;
+        }
+        const uintptr_t off = a.offset + static_cast<uintptr_t>(static_cast<intptr_t>(bv) * a.eff_stride);
+        if (a.integer) {
+            GLES.glVertexAttribIPointer(a.index, a.size, a.type, a.stride, reinterpret_cast<const void*>(off));
+        } else {
+            GLES.glVertexAttribPointer(a.index, a.size, a.type, a.normalized, a.stride, reinterpret_cast<const void*>(off));
+        }
+    }
+}
+
+bool mg_bv_attrib_offset_draw(GLenum mode, const GLsizei* counts, GLenum type, const void* const* indices,
+                              GLsizei primcount, const GLint* basevertex) {
+    if (!mg_bv_attrib_wanted()) return false;
+    if (!GLES.glGetVertexAttribiv || !GLES.glGetVertexAttribPointerv || !GLES.glVertexAttribPointer ||
+        !GLES.glVertexAttribIPointer) {
+        return false;
+    }
+
+    static GLint max_attribs = 0;
+    if (max_attribs <= 0) {
+        GLES.glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &max_attribs);
+        if (max_attribs <= 0 || max_attribs > 32) max_attribs = 16;
+    }
+
+    mg_bv_attrib_t attrs[32];
+    int n = 0;
+    for (GLint i = 0; i < max_attribs; ++i) {
+        GLint enabled = 0;
+        GLES.glGetVertexAttribiv(static_cast<GLuint>(i), GL_VERTEX_ATTRIB_ARRAY_ENABLED, &enabled);
+        if (!enabled) continue;
+        GLint divisor = 0;
+        GLES.glGetVertexAttribiv(static_cast<GLuint>(i), GL_VERTEX_ATTRIB_ARRAY_DIVISOR, &divisor);
+        if (divisor != 0) continue; // per-instance data is not shifted by a base vertex
+        GLint buffer = 0, size = 0, gltype = 0, normalized = 0, stride = 0, integer = 0;
+        GLES.glGetVertexAttribiv(static_cast<GLuint>(i), GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &buffer);
+        if (buffer == 0) return false; // client-side array: offsets are pointers, leave it to the rebase path
+        GLES.glGetVertexAttribiv(static_cast<GLuint>(i), GL_VERTEX_ATTRIB_ARRAY_SIZE, &size);
+        GLES.glGetVertexAttribiv(static_cast<GLuint>(i), GL_VERTEX_ATTRIB_ARRAY_TYPE, &gltype);
+        GLES.glGetVertexAttribiv(static_cast<GLuint>(i), GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, &normalized);
+        GLES.glGetVertexAttribiv(static_cast<GLuint>(i), GL_VERTEX_ATTRIB_ARRAY_STRIDE, &stride);
+        GLES.glGetVertexAttribiv(static_cast<GLuint>(i), GL_VERTEX_ATTRIB_ARRAY_INTEGER, &integer);
+        void* ptr = nullptr;
+        GLES.glGetVertexAttribPointerv(static_cast<GLuint>(i), GL_VERTEX_ATTRIB_ARRAY_POINTER, &ptr);
+        const GLsizei packed = mg_bv_type_bytes(static_cast<GLenum>(gltype), size);
+        if (packed <= 0) return false;
+        mg_bv_attrib_t& a = attrs[n++];
+        a.index = static_cast<GLuint>(i);
+        a.size = size;
+        a.type = static_cast<GLenum>(gltype);
+        a.normalized = normalized ? GL_TRUE : GL_FALSE;
+        a.integer = integer ? GL_TRUE : GL_FALSE;
+        a.stride = stride;
+        a.eff_stride = stride > 0 ? stride : packed;
+        a.buffer = static_cast<GLuint>(buffer);
+        a.offset = reinterpret_cast<uintptr_t>(ptr);
+    }
+    if (n == 0) return false;
+
+    // Every shifted start must stay non-negative.
+    for (GLsizei d = 0; d < primcount; ++d) {
+        const GLint bv = basevertex ? basevertex[d] : 0;
+        if (bv >= 0 || counts[d] <= 0) continue;
+        for (int k = 0; k < n; ++k) {
+            if (static_cast<intptr_t>(attrs[k].offset) + static_cast<intptr_t>(bv) * attrs[k].eff_stride < 0) return false;
+        }
+    }
+
+    const GLuint saved_array_buffer = mg_driver_bound_buffer(GL_ARRAY_BUFFER);
+    GLuint bound = saved_array_buffer;
+    GLint applied = 0; // the attributes currently describe base vertex 0
+    for (GLsizei d = 0; d < primcount; ++d) {
+        const GLsizei count = counts[d];
+        if (count <= 0) continue;
+        const GLint bv = basevertex ? basevertex[d] : 0;
+        if (bv != applied) {
+            mg_bv_apply(attrs, n, bv, &bound);
+            applied = bv;
+        }
+        GLES.glDrawElements(mode, count, type, indices[d]);
+    }
+    if (applied != 0) mg_bv_apply(attrs, n, 0, &bound);
+    if (bound != saved_array_buffer) GLES.glBindBuffer(GL_ARRAY_BUFFER, saved_array_buffer);
+
+    static std::atomic<unsigned long long> calls{0};
+    const unsigned long long c = calls.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (c == 1 || c % 5000ULL == 0ULL) {
+        LOG_W_FORCE("[MG] base vertex via attribute offsets: %llu draws served (%d attributes, no readback)", c, n)
+    }
+    return true;
+}
+
 void mg_glMultiDrawElementsBaseVertex_drawelements(GLenum mode, GLsizei* counts, GLenum type,
                                                    const void* const* indices, GLsizei primcount,
                                                    const GLint* basevertex) {
@@ -1028,6 +1186,16 @@ void mg_glMultiDrawElementsBaseVertex_drawelements(GLenum mode, GLsizei* counts,
             }
             GLES.glDrawElements(mode, count, type, indices[i]);
         }
+        mg_md_perf_account(primcount, 0);
+        if (force_fixed) GLES.glDisable(GL_PRIMITIVE_RESTART_FIXED_INDEX);
+        CHECK_GL_ERROR
+        return;
+    }
+
+    // Fast path: shift the vertex attributes instead of rewriting the indices.
+    // Only when the restart emulation doesn't need the stream rewritten anyway.
+    if (!mg_restart_needs_rewrite(type) &&
+        mg_bv_attrib_offset_draw(mode, counts, type, indices, primcount, basevertex)) {
         mg_md_perf_account(primcount, 0);
         if (force_fixed) GLES.glDisable(GL_PRIMITIVE_RESTART_FIXED_INDEX);
         CHECK_GL_ERROR

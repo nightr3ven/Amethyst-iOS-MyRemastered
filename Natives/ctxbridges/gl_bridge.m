@@ -1953,8 +1953,26 @@ gl_render_window_t* gl_init_context(gl_render_window_t *share) {
         atomic_store(&g_ame50_gl_owns_layer, 1);
     }
 
+    // Perf: a no-error context lets ANGLE skip validating every GL call.
+    // Only with MobileGlues (it forwards the attribute), and only when the
+    // display supports it. Opt out with AMETHYST_GL_NO_ERROR=0.
+    const char *noErrEnv = getenv("AMETHYST_GL_NO_ERROR");
+    static const char *(*angleQueryString)(EGLDisplay, EGLint) = NULL;
+    if (!angleQueryString) {
+        void *angleEgl = dlopen("@executable_path/Frameworks/libEGL.framework/libEGL", RTLD_NOW | RTLD_NOLOAD);
+        if (angleEgl) angleQueryString = dlsym(angleEgl, "eglQueryString");
+    }
+    const char *eglExts = angleQueryString ? angleQueryString(g_EglDisplay, EGL_EXTENSIONS) : NULL;
+    BOOL noError = ame_mgFrontendActive && !(noErrEnv && noErrEnv[0] == '0') &&
+                   eglExts && strstr(eglExts, "EGL_KHR_create_context_no_error");
+    static BOOL loggedNoError = NO;
+    if (!loggedNoError) {
+        loggedNoError = YES;
+        NSLog(@"[PERF] GL no-error context: %s", noError ? "ON (ANGLE validation skipped)" : "off");
+    }
     const EGLint gles_ctx_attribs[] = {
         EGL_CONTEXT_CLIENT_VERSION, 3,
+        noError ? 0x31B3 /* EGL_CONTEXT_OPENGL_NO_ERROR_KHR */ : EGL_NONE, EGL_TRUE,
         EGL_NONE
     };
     // MobileGL 走真正的 desktop GL：要求 3.3 Core Profile。

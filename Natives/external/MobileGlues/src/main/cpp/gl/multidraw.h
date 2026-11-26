@@ -24,6 +24,14 @@ extern "C"
 {
 #endif
 
+    // Base vertex without driver support and without touching index data:
+    // shift every enabled, non-instanced vertex attribute by basevertex*stride,
+    // draw the application's indices as they are, then restore the attributes.
+    // Returns false (and draws nothing) when the current vertex array can't be
+    // handled this way; the caller then uses its CPU rebase path.
+    bool mg_bv_attrib_offset_draw(GLenum mode, const GLsizei* counts, GLenum type, const void* const* indices,
+                                  GLsizei primcount, const GLint* basevertex);
+
     struct draw_elements_indirect_command_t {
         GLuint count;
         GLuint instanceCount;

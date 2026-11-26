@@ -347,6 +347,15 @@ namespace {
                     *error = EGL_BAD_MATCH;
                     return false;
                 }
+                // A no-error context is a real backend feature on ANGLE
+                // (EGL_KHR_create_context_no_error): it skips per-call
+                // validation, a large share of CPU time in draw-heavy frames.
+                // Forward it instead of dropping it.
+                if (attribute == EGL_CONTEXT_OPENGL_NO_ERROR_KHR && value == EGL_TRUE) {
+                    rewritten.push_back(attribute);
+                    rewritten.push_back(value);
+                    LOG_W_FORCE("eglCreateContext: no-error context requested -- forwarded to backend")
+                }
                 continue;
             }
 

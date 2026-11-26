@@ -7,6 +7,7 @@
 
 #include "drawing.h"
 #include "restart.h"
+#include "multidraw.h"
 #include "buffer.h"
 #include "framebuffer.h"
 #include "mg.h"
@@ -522,6 +523,14 @@ void glDrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type, const voi
             return;
         }
         if (count <= 0) return;
+        // Shift the vertex attributes instead of reading back and rewriting the
+        // index buffer (a GPU round trip per draw).
+        {
+            const GLsizei one_count = count;
+            const void* const one_indices[1] = {indices};
+            const GLint one_bv = basevertex;
+            if (mg_bv_attrib_offset_draw(mode, &one_count, type, one_indices, 1, &one_bv)) return;
+        }
 
         size_t indexSize;
         switch (type) {
