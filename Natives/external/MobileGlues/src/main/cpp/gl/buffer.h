@@ -88,6 +88,9 @@ extern "C"
 
     GLAPI GLAPIENTRY GLboolean glUnmapBuffer(GLenum target);
 
+    GLAPI GLAPIENTRY void glCopyBufferSubData(GLenum readTarget, GLenum writeTarget, GLintptr readOffset,
+                                              GLintptr writeOffset, GLsizeiptr size);
+
     GLAPI GLAPIENTRY void* glMapBuffer(GLenum target, GLenum access);
 
     GLAPI GLAPIENTRY void* glMapBufferRange(GLenum target, GLintptr offset, GLsizeiptr length, GLbitfield access);

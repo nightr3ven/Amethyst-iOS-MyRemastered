@@ -227,6 +227,24 @@ static void ame_perf_log_gl(uint32_t frames) {
     NSLog(@"[PERF-GL] per frame: draw %.0f calls %.2f ms | multidraw %.0f calls (%.0f sub) %.2f ms | upload %.0f calls %.0f KB %.2f ms | map %.0f calls %.2f ms",
           calls[0] / f, us[0] / f / 1000.0, calls[1] / f, sub / f, us[1] / f / 1000.0,
           calls[2] / f, bytes / f / 1024.0, us[2] / f / 1000.0, calls[3] / f, us[3] / f / 1000.0);
+
+    // Uniform-block proxy (MobileGlues gl/buffer.cpp): binds redirected to a
+    // small per-index buffer, how many of those needed new bytes uploaded,
+    // binds left alone, and one-off read-backs.
+    typedef void (*ubo_fn)(uint64_t*, uint64_t*, uint64_t*, uint64_t*);
+    static ubo_fn ubo = NULL; static BOOL uboLooked = NO;
+    if (!uboLooked) {
+        uboLooked = YES;
+        void *h = dlopen("@rpath/libmobileglues.dylib", RTLD_NOLOAD | RTLD_LAZY);
+        ubo = (ubo_fn)dlsym(h ?: RTLD_DEFAULT, "mg_perf_ubo_snapshot");
+        if (!ubo) ubo = (ubo_fn)dlsym(RTLD_DEFAULT, "mg_perf_ubo_snapshot");
+    }
+    if (ubo) {
+        uint64_t proxied = 0, uploads = 0, passthrough = 0, readbacks = 0;
+        ubo(&proxied, &uploads, &passthrough, &readbacks);
+        NSLog(@"[PERF-UBO] per frame: %.0f proxied (%.0f uploaded) | %.0f direct | %llu read-backs",
+              proxied / f, uploads / f, passthrough / f, readbacks);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +261,7 @@ static void ame_perf_log_gl(uint32_t frames) {
 static thread_t g_ame_render_thread = MACH_PORT_NULL;
 #define AME_SAMPLES_MAX 4096
 static uint64_t g_ame_pc[AME_SAMPLES_MAX], g_ame_lr[AME_SAMPLES_MAX];
-#define AME_FRAMES 8
+#define AME_FRAMES 16
 static uint64_t g_ame_ret[AME_SAMPLES_MAX][AME_FRAMES];
 static uintptr_t g_ame_stack_lo = 0, g_ame_stack_hi = 0;
 static int g_ame_sample_count = 0;
@@ -279,6 +297,19 @@ static void ame_perf_flush_samples(void) {
             }
             sym = [sym stringByAppendingFormat:@" <- %@", ame_perf_where(who, YES)];
             img = [img stringByAppendingFormat:@" <- %@", whoImg];
+            // A wait inside Metal says nothing on its own: name the ANGLE and
+            // MobileGlues functions that led to it.
+            if (![whoImg hasPrefix:@"libGLESv2"] && ![whoImg hasPrefix:@"libmobileglues"] && ![whoImg hasPrefix:@"libjvm"] &&
+                ![whoImg isEqualToString:@"java/jit"]) {
+                NSString *angle = nil, *mg = nil;
+                for (int k = 0; k < AME_FRAMES && g_ame_ret[i][k]; k++) {
+                    NSString *fi = ame_perf_where(g_ame_ret[i][k], NO);
+                    if (!angle && [fi hasPrefix:@"libGLESv2"]) angle = ame_perf_where(g_ame_ret[i][k], YES);
+                    if (!mg && [fi hasPrefix:@"libmobileglues"]) { mg = ame_perf_where(g_ame_ret[i][k], YES); break; }
+                }
+                if (angle) sym = [sym stringByAppendingFormat:@" <- %@", angle];
+                if (mg) sym = [sym stringByAppendingFormat:@" <- %@", mg];
+            }
         }
         byImage[img] = @(byImage[img].intValue + 1);
         bySymbol[sym] = @(bySymbol[sym].intValue + 1);

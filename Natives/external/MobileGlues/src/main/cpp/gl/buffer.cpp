@@ -12,6 +12,9 @@
 #include <memory>
 #include <ska/flat_hash_map.hpp>
 #include <array>
+#include <cstdint>
+#include <cstring>
+#include <cstdlib>
 #include "texture.h"
 
 #define DEBUG 0
@@ -58,11 +61,34 @@ static GLint maxArrayId = 0;
 
 namespace {
 
+// CPU mirror of a buffer that has been bound as a uniform block (see the
+// uniform-block proxy section further down).
+struct ubo_shadow_t {
+    std::vector<uint8_t> bytes;
+    bool valid = false;      // bytes match the driver's copy
+    bool proxyable = true;   // false once a read-back failed: pass binds through
+    uint8_t* map_ptr = nullptr; // live write mapping, copied in at unmap
+    size_t map_off = 0;
+    size_t map_len = 0;
+};
+
+// One small driver buffer per uniform binding index, holding just the block
+// the application bound there.
+struct ubo_slot_t {
+    GLuint proxy = 0;     // driver name
+    size_t capacity = 0;  // GL size of the proxy
+    GLuint src = 0;       // application buffer being stood in for; 0 = slot passes through
+    size_t off = 0;
+    size_t size = 0;
+    std::vector<uint8_t> last; // what the proxy currently holds
+};
+
 struct buffer_group_state_t { // shared across a share group
     std::vector<GLuint> gen_buffers;
     std::vector<char> gen_buffer_exists;
     std::vector<GLuint> free_buffer_ids;
     std::vector<size_t> buffer_datasize;
+    ska::flat_hash_map<GLuint, ubo_shadow_t> ubo_shadows;
 };
 
 struct buffer_ctx_state_t { // private to one context
@@ -71,6 +97,10 @@ struct buffer_ctx_state_t { // private to one context
     std::vector<GLuint> free_array_ids;
     std::vector<GLuint> element_array_buffer_per_vao;
     std::array<GLuint, 13> bound_buffers{};
+    std::vector<ubo_slot_t> ubo_slots;
+    // The driver's generic GL_UNIFORM_BUFFER binding was left on a proxy and
+    // must be put back before anything addresses that target.
+    bool ubo_generic_dirty = false;
 };
 
 std::mutex g_buf_mutex;
@@ -488,6 +518,266 @@ void InitVertexArrayMap(size_t expectedSize) {
     g_element_array_buffer_per_vao.resize(1, 0);
 }
 
+// --- Uniform-block proxies (Air) --------------------------------------------
+//
+// Minecraft 26 keeps its uniform blocks in large ring buffers and binds one
+// block at a time with glBindBufferRange. ANGLE's Metal backend converts
+// std140 blocks to Metal layout (ProgramExecutableMtl::
+// legalizeUniformBufferOffsets), and for a range binding it converts
+// everything from the bound offset to the END of the buffer -- once per
+// distinct offset, again after every write to the buffer, each time into a
+// freshly allocated Metal buffer of that size, after a CPU read of the live
+// buffer. With hundreds of binds a frame into multi-megabyte ring buffers that
+// was 60-90% of the render thread on 26.x, measured by Air's sampler, where
+// 1.21 (no uniform buffers) holds 120 fps.
+//
+// It also made every write map of such a buffer wait for the GPU: blocks that
+// need no conversion were bound straight from the ring buffer, so the next
+// glMapBufferRange into it (ANGLE syncs any non-UNSYNCHRONIZED write map of a
+// buffer the GPU is using) blocked until the GPU caught up.
+//
+// A uniform binding is redirected here to a small per-index proxy holding just
+// that block, bound at offset 0, so ANGLE converts one block and the source
+// buffer never reaches the GPU. The bytes come from a CPU mirror of the source buffer that every
+// write path in this file keeps current (glBufferData, glBufferSubData,
+// map/unmap, glCopyBufferSubData); a mirror starts with one read-back of the
+// driver's copy. A write that overlaps a block standing in a proxy refreshes
+// that proxy at once, so a draw always sees what GL says it should.
+// MG_UBO_PROXY=0 turns the whole thing off.
+
+namespace {
+constexpr size_t kUboProxyMaxBlock = 64 * 1024;         // no uniform block is larger
+constexpr size_t kUboShadowMaxBuffer = 64 * 1024 * 1024; // don't mirror anything bigger
+
+bool ubo_proxy_enabled() {
+    static const bool on = [] {
+        const char* e = getenv("MG_UBO_PROXY");
+        const bool enabled = !(e && e[0] == '0');
+        LOG_W_FORCE("[MG] uniform-block proxy %s", enabled ? "on" : "off (MG_UBO_PROXY=0)")
+        return enabled;
+    }();
+    return on;
+}
+
+inline void ubo_restore_generic() {
+    if (!g_bc->ubo_generic_dirty) return;
+    g_bc->ubo_generic_dirty = false;
+    GLES.glBindBuffer(GL_UNIFORM_BUFFER, mg_driver_bound_buffer(GL_UNIFORM_BUFFER));
+}
+
+inline void ubo_restore_generic_for(GLenum target) {
+    if (target == GL_UNIFORM_BUFFER) ubo_restore_generic();
+}
+
+ubo_shadow_t* ubo_shadow_of(GLuint buffer) {
+    if (buffer == 0) return nullptr;
+    auto& shadows = g_bg->ubo_shadows;
+    if (shadows.empty()) return nullptr;
+    const auto it = shadows.find(buffer);
+    return it == shadows.end() ? nullptr : &it->second;
+}
+
+// Seed a mirror from the driver: one read mapping, which waits for the GPU at
+// most once per buffer.
+bool ubo_shadow_fill(GLuint buffer, ubo_shadow_t& s) {
+    const size_t size = get_buffer_data_size(buffer);
+    const GLuint real = find_real_buffer(buffer);
+    if (size == 0 || size > kUboShadowMaxBuffer || real == 0 || s.map_ptr) return false;
+    GLES.glBindBuffer(GL_COPY_READ_BUFFER, real);
+    const void* p = GLES.glMapBufferRange(GL_COPY_READ_BUFFER, 0, static_cast<GLsizeiptr>(size), GL_MAP_READ_BIT);
+    if (p) {
+        const auto* bytes = static_cast<const uint8_t*>(p);
+        s.bytes.assign(bytes, bytes + size);
+        GLES.glUnmapBuffer(GL_COPY_READ_BUFFER);
+    } else {
+        GLES.glGetError(); // the failed map's own error, not the application's
+    }
+    GLES.glBindBuffer(GL_COPY_READ_BUFFER, mg_driver_bound_buffer(GL_COPY_READ_BUFFER));
+    s.valid = p != nullptr;
+    mg_perf_ubo_readbacks.fetch_add(1, std::memory_order_relaxed);
+    return s.valid;
+}
+
+ubo_slot_t& ubo_slot(GLuint index) {
+    auto& slots = g_bc->ubo_slots;
+    if (index >= slots.size()) slots.resize(index + 1);
+    return slots[index];
+}
+
+// Put a block in the slot's proxy and bind the proxy at `index`. Unchanged
+// bytes skip both: the proxy is already bound there with this size.
+void ubo_slot_load(GLuint index, ubo_slot_t& slot, const uint8_t* src, size_t size) {
+    mg_perf_ubo_proxied.fetch_add(1, std::memory_order_relaxed);
+    if (slot.last.size() == size && memcmp(slot.last.data(), src, size) == 0) return;
+    mg_perf_ubo_uploads.fetch_add(1, std::memory_order_relaxed);
+
+    // Room past the std140 size so a block whose Metal layout is larger still
+    // fits without ANGLE falling back to conversion for lack of space.
+    const size_t need = ((size + 255) & ~static_cast<size_t>(255)) + 256;
+    if (!slot.proxy) GLES.glGenBuffers(1, &slot.proxy);
+    // Always rewrite the whole proxy. A partial write to a buffer the GPU still
+    // reads makes ANGLE blit the untouched rest into a new buffer, and a
+    // GPU-written buffer then costs a GPU wait to read on the CPU.
+    const size_t upload = slot.capacity < need ? need : slot.capacity;
+    static thread_local std::vector<uint8_t> staging;
+    if (staging.size() < upload) staging.resize(upload);
+    memcpy(staging.data(), src, size);
+    memset(staging.data() + size, 0, upload - size);
+    GLES.glBindBuffer(GL_UNIFORM_BUFFER, slot.proxy);
+    if (slot.capacity < need) {
+        GLES.glBufferData(GL_UNIFORM_BUFFER, static_cast<GLsizeiptr>(upload), staging.data(), GL_DYNAMIC_DRAW);
+        slot.capacity = upload;
+    } else {
+        GLES.glBufferSubData(GL_UNIFORM_BUFFER, 0, static_cast<GLsizeiptr>(upload), staging.data());
+    }
+    // Rebinding marks ANGLE's uniform bindings dirty, which is what makes it
+    // convert the new contents for the next draw.
+    GLES.glBindBufferRange(GL_UNIFORM_BUFFER, index, slot.proxy, 0, static_cast<GLsizeiptr>(size));
+    g_bc->ubo_generic_dirty = true;
+    slot.last.assign(src, src + size);
+}
+
+void ubo_slot_clear(ubo_slot_t& slot) {
+    slot.src = 0;
+    slot.last.clear();
+}
+
+// Redirect a uniform range binding to a proxy if that's worthwhile. Returns
+// false to let the caller bind the real buffer.
+bool ubo_try_proxy(GLuint index, GLuint buffer, GLintptr offset, GLsizeiptr size) {
+    if (!ubo_proxy_enabled()) return false;
+    if (buffer == 0 || !has_buffer(buffer) || offset < 0 || size <= 0) return false;
+    const size_t total = get_buffer_data_size(buffer);
+    const size_t off = static_cast<size_t>(offset);
+    const size_t sz = static_cast<size_t>(size);
+    if (total == 0 || total > kUboShadowMaxBuffer || off + sz > total) return false;
+    // Every uniform bind is proxied, small buffers and the tail of a ring
+    // included: a source buffer the GPU never reads directly is also one the
+    // application can map for writing without ANGLE first waiting for the GPU
+    // (a write map without GL_MAP_UNSYNCHRONIZED_BIT syncs on any GPU use).
+    if (sz > kUboProxyMaxBlock) return false;
+
+    ubo_shadow_t& s = g_bg->ubo_shadows[buffer];
+    if (!s.proxyable || s.map_ptr) return false;
+    if (!s.valid || s.bytes.size() != total) {
+        if (!ubo_shadow_fill(buffer, s)) {
+            s.proxyable = false;
+            LOG_W_FORCE("[MG] uniform-block proxy: couldn't read buffer %u back, binding it directly", buffer)
+            return false;
+        }
+    }
+    ubo_slot_t& slot = ubo_slot(index);
+    slot.src = buffer;
+    slot.off = off;
+    slot.size = sz;
+    ubo_slot_load(index, slot, s.bytes.data() + off, sz);
+    // The driver's generic binding may be anything now; GL says it is `buffer`.
+    g_bc->ubo_generic_dirty = true;
+    return true;
+}
+
+// After [begin, end) of `buffer` changed, bring every proxy standing in for
+// part of that range up to date. A proxy whose mirror can't be trusted any
+// more goes back to binding the real buffer.
+void ubo_refresh_slots(GLuint buffer, size_t begin, size_t end) {
+    auto& slots = g_bc->ubo_slots;
+    for (GLuint i = 0; i < slots.size(); ++i) {
+        ubo_slot_t& slot = slots[i];
+        if (slot.src != buffer) continue;
+        if (begin >= slot.off + slot.size || end <= slot.off) continue;
+        ubo_shadow_t* s = ubo_shadow_of(buffer);
+        bool ok = s != nullptr && s->proxyable && !s->map_ptr;
+        if (ok && (!s->valid || s->bytes.size() != get_buffer_data_size(buffer))) ok = ubo_shadow_fill(buffer, *s);
+        if (ok && slot.off + slot.size <= s->bytes.size()) {
+            ubo_slot_load(i, slot, s->bytes.data() + slot.off, slot.size);
+            continue;
+        }
+        GLES.glBindBufferRange(GL_UNIFORM_BUFFER, i, find_real_buffer(buffer), static_cast<GLintptr>(slot.off),
+                               static_cast<GLsizeiptr>(slot.size));
+        g_bc->ubo_generic_dirty = true;
+        ubo_slot_clear(slot);
+    }
+}
+
+// Write paths. Each is a no-op for buffers that were never proxied.
+void ubo_mirror_write(GLuint buffer, size_t off, const void* data, size_t len) {
+    ubo_shadow_t* s = ubo_shadow_of(buffer);
+    if (!s || !data || len == 0) return;
+    if (s->valid && off + len <= s->bytes.size()) {
+        memcpy(s->bytes.data() + off, data, len);
+    } else {
+        s->valid = false;
+    }
+    ubo_refresh_slots(buffer, off, off + len);
+}
+
+void ubo_mirror_respecify(GLuint buffer, size_t size, const void* data) {
+    ubo_shadow_t* s = ubo_shadow_of(buffer);
+    if (!s) return;
+    s->map_ptr = nullptr;
+    if (size <= kUboShadowMaxBuffer) {
+        if (data) {
+            const auto* bytes = static_cast<const uint8_t*>(data);
+            s->bytes.assign(bytes, bytes + size);
+        } else {
+            s->bytes.assign(size, 0); // undefined contents; zeros are as good as any
+        }
+        s->valid = true;
+    } else {
+        s->bytes.clear();
+        s->bytes.shrink_to_fit();
+        s->valid = false;
+    }
+    ubo_refresh_slots(buffer, 0, SIZE_MAX);
+}
+
+void ubo_note_map(GLuint buffer, size_t off, size_t len, GLbitfield access, void* ptr) {
+    if (!ptr || (access & GL_MAP_WRITE_BIT) == 0) return;
+    ubo_shadow_t* s = ubo_shadow_of(buffer);
+    if (!s) return;
+    s->map_ptr = static_cast<uint8_t*>(ptr);
+    s->map_off = off;
+    s->map_len = len;
+}
+
+// Copy a write mapping into the mirror; must run before the driver unmaps.
+// Returns whether proxies need refreshing once it has.
+bool ubo_take_unmap(GLuint buffer, size_t* begin, size_t* end) {
+    ubo_shadow_t* s = ubo_shadow_of(buffer);
+    if (!s || !s->map_ptr) return false;
+    if (s->valid && s->map_off + s->map_len <= s->bytes.size()) {
+        memcpy(s->bytes.data() + s->map_off, s->map_ptr, s->map_len);
+    } else {
+        s->valid = false;
+    }
+    *begin = s->map_off;
+    *end = s->map_off + s->map_len;
+    s->map_ptr = nullptr;
+    return true;
+}
+
+void ubo_forget_buffer(GLuint buffer) {
+    g_bg->ubo_shadows.erase(buffer);
+    auto& slots = g_bc->ubo_slots;
+    for (GLuint i = 0; i < slots.size(); ++i) {
+        if (slots[i].src != buffer) continue;
+        // GL unbinds a deleted buffer from the current context's bindings.
+        GLES.glBindBufferBase(GL_UNIFORM_BUFFER, i, 0);
+        g_bc->ubo_generic_dirty = true;
+        ubo_slot_clear(slots[i]);
+    }
+}
+} // namespace
+
+extern "C" __attribute__((visibility("default"))) void mg_perf_ubo_snapshot(uint64_t* proxied, uint64_t* uploads,
+                                                                            uint64_t* passthrough,
+                                                                            uint64_t* readbacks) {
+    *proxied = mg_perf_ubo_proxied.exchange(0, std::memory_order_relaxed);
+    *uploads = mg_perf_ubo_uploads.exchange(0, std::memory_order_relaxed);
+    *passthrough = mg_perf_ubo_passthrough.exchange(0, std::memory_order_relaxed);
+    *readbacks = mg_perf_ubo_readbacks.exchange(0, std::memory_order_relaxed);
+}
+
 void glGenBuffers(GLsizei n, GLuint* buffers) {
     LOG()
     LOG_D("glGenBuffers(%i, %p)", n, buffers)
@@ -512,6 +802,7 @@ void glDeleteBuffers(GLsizei n, const GLuint* buffers) {
         // recycled names would otherwise push fresh garbage into a live
         // buffer texture.
         g_tbo_backing.erase(buffers[i]);
+        if (buffers[i] != 0) ubo_forget_buffer(buffers[i]);
         if (find_real_buffer(buffers[i])) {
             GLuint real_buff = find_real_buffer(buffers[i]);
             GLES.glDeleteBuffers(1, &real_buff);
@@ -531,6 +822,8 @@ void glBindBuffer(GLenum target, GLuint buffer) {
     LOG()
     LOG_D("glBindBuffer, target = %s, buffer = %d", glEnumToString(target), buffer)
     set_bound_buffer_by_target(target, buffer);
+    // Every path below binds the driver's generic uniform binding itself.
+    if (target == GL_UNIFORM_BUFFER) g_bc->ubo_generic_dirty = false;
 
     if (target == GL_PARAMETER_BUFFER) {
         // GLES has no GL_PARAMETER_BUFFER. The binding is tracked here and read
@@ -592,6 +885,15 @@ void glBindBufferRange(GLenum target, GLuint index, GLuint buffer, GLintptr offs
     LOG_D("glBindBufferRange, target = %s, index = %d, buffer = %d, offset = %p, size = %zi", glEnumToString(target),
           index, buffer, (void*)offset, size)
 
+    if (target == GL_UNIFORM_BUFFER) {
+        // An indexed bind also sets the generic binding.
+        set_bound_buffer_by_target(GL_UNIFORM_BUFFER, buffer);
+        if (ubo_try_proxy(index, buffer, offset, size)) return;
+        ubo_slot_clear(ubo_slot(index));
+        g_bc->ubo_generic_dirty = false; // the bind below puts the driver's generic binding right
+        mg_perf_ubo_passthrough.fetch_add(1, std::memory_order_relaxed);
+    }
+
     if (!has_buffer(buffer) || buffer == 0) {
         GLES.glBindBufferRange(target, index, buffer, offset, size);
         CHECK_GL_ERROR
@@ -610,6 +912,15 @@ void glBindBufferRange(GLenum target, GLuint index, GLuint buffer, GLintptr offs
 void glBindBufferBase(GLenum target, GLuint index, GLuint buffer) {
     LOG()
     LOG_D("glBindBufferBase, target = %s, index = %d, buffer = %d", glEnumToString(target), index, buffer)
+
+    if (target == GL_UNIFORM_BUFFER) {
+        set_bound_buffer_by_target(GL_UNIFORM_BUFFER, buffer);
+        const size_t total = buffer != 0 ? get_buffer_data_size(buffer) : 0;
+        if (total > 0 && ubo_try_proxy(index, buffer, 0, static_cast<GLsizeiptr>(total))) return;
+        ubo_slot_clear(ubo_slot(index));
+        g_bc->ubo_generic_dirty = false;
+        mg_perf_ubo_passthrough.fetch_add(1, std::memory_order_relaxed);
+    }
 
     if (!has_buffer(buffer) || buffer == 0) {
         GLES.glBindBufferBase(target, index, buffer);
@@ -1100,10 +1411,12 @@ void glBufferData(GLenum target, GLsizeiptr size, const void* data, GLenum usage
     LOG()
     LOG_D("glBufferData, target = %s, size = %d, data = 0x%x, usage = %s", glEnumToString(target), size, data,
           glEnumToString(usage))
+    ubo_restore_generic_for(target);
     borrowed_target_t t(target);
     GLES.glBufferData(t.target, size, data, usage);
     set_buffer_data_size(find_bound_buffer_by_target(target), size);
     CHECK_GL_ERROR
+    ubo_mirror_respecify(find_bound_buffer_by_target(target), static_cast<size_t>(size), data);
     // Storage may have been (re)specified or resized: refresh the emulated
     // buffer-texture snapshot if this buffer backs one.
     if (hardware->emulate_texture_buffer)
@@ -1117,9 +1430,13 @@ void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void
     MG_PERF_BYTES(size);
     LOG()
     LOG_D("glBufferSubData, target = %s, offset = %p, size = %zi", glEnumToString(target), (void*)offset, size)
+    ubo_restore_generic_for(target);
     borrowed_target_t t(target);
     GLES.glBufferSubData(t.target, offset, size, data);
     CHECK_GL_ERROR
+    if (offset >= 0 && size > 0)
+        ubo_mirror_write(find_bound_buffer_by_target(target), static_cast<size_t>(offset), data,
+                         static_cast<size_t>(size));
     if (hardware->emulate_texture_buffer)
         mg_tbo_refresh_if_backing(find_bound_buffer_by_target(target));
 }
@@ -1127,6 +1444,7 @@ void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void
 void glGetBufferParameteriv(GLenum target, GLenum pname, GLint* params) {
     LOG()
     LOG_D("glGetBufferParameteriv, target = %s, pname = %s", glEnumToString(target), glEnumToString(pname))
+    ubo_restore_generic_for(target);
     borrowed_target_t t(target);
     GLES.glGetBufferParameteriv(t.target, pname, params);
     CHECK_GL_ERROR
@@ -1136,9 +1454,13 @@ void* glMapBuffer(GLenum target, GLenum access) {
     MG_PERF_SCOPE(MGP_MAP);
     LOG()
     LOG_D("glMapBuffer, target = %s, access = %s", glEnumToString(target), glEnumToString(access))
+    ubo_restore_generic_for(target);
     if (g_gles_caps.GL_OES_mapbuffer) {
         borrowed_target_t t(target);
-        return GLES.glMapBufferOES(t.target, access);
+        void* ptr = GLES.glMapBufferOES(t.target, access);
+        const GLuint app = find_bound_buffer_by_target(target);
+        ubo_note_map(app, 0, get_buffer_data_size(app), access == GL_READ_ONLY ? 0 : GL_MAP_WRITE_BIT, ptr);
+        return ptr;
     }
     GLint buffer_size;
     glGetBufferParameteriv(target, GL_BUFFER_SIZE, &buffer_size);
@@ -1186,18 +1508,34 @@ void* glMapBufferRange(GLenum target, GLintptr offset, GLsizeiptr length, GLbitf
     LOG()
     if (global_settings.buffer_coherent_as_flush) access &= ~GL_MAP_FLUSH_EXPLICIT_BIT;
     //    access |= GL_MAP_UNSYNCHRONIZED_BIT;
+    ubo_restore_generic_for(target);
     borrowed_target_t t(target);
-    return GLES.glMapBufferRange(t.target, offset, length, access);
+    void* ptr = GLES.glMapBufferRange(t.target, offset, length, access);
+    if (offset >= 0 && length > 0)
+        ubo_note_map(find_bound_buffer_by_target(target), static_cast<size_t>(offset), static_cast<size_t>(length),
+                     access, ptr);
+    return ptr;
 }
 
 GLboolean glUnmapBuffer(GLenum target) {
     LOG()
     LOG_D("%s(%s)", __func__, glEnumToString(target));
+    ubo_restore_generic_for(target);
+    // The mapped bytes have to reach the uniform-block mirror before the driver
+    // takes the pointer away; proxies are refreshed once it has.
+    const GLuint app_buffer = find_bound_buffer_by_target(target);
+    size_t written_begin = 0, written_end = 0;
+    const bool written = ubo_take_unmap(app_buffer, &written_begin, &written_end);
     borrowed_target_t t(target);
-    if (g_gles_caps.GL_OES_mapbuffer) return GLES.glUnmapBuffer(t.target);
+    if (g_gles_caps.GL_OES_mapbuffer) {
+        GLboolean r = GLES.glUnmapBuffer(t.target);
+        if (written) ubo_refresh_slots(app_buffer, written_begin, written_end);
+        return r;
+    }
 
     GLboolean result = GLES.glUnmapBuffer(t.target);
     CHECK_GL_ERROR
+    if (written) ubo_refresh_slots(app_buffer, written_begin, written_end);
     // Mapping writes commit at unmap time, so the snapshot is refreshed here.
     if (result && hardware->emulate_texture_buffer)
         mg_tbo_refresh_if_backing(find_bound_buffer_by_target(target));
@@ -1210,10 +1548,14 @@ void glBufferStorage(GLenum target, GLsizeiptr size, const void* data, GLbitfiel
         if (global_settings.buffer_coherent_as_flush &&
             ((flags & GL_MAP_PERSISTENT_BIT) != 0 || (flags & GL_DYNAMIC_STORAGE_BIT) != 0))
             flags |= (GL_MAP_WRITE_BIT | GL_MAP_COHERENT_BIT | GL_MAP_PERSISTENT_BIT);
+        ubo_restore_generic_for(target);
         borrowed_target_t t(target);
         GLES.glBufferStorageEXT(t.target, size, data, flags);
         // Allocates storage just as glBufferData does, so it owes the same record.
         set_buffer_data_size(find_bound_buffer_by_target(target), size);
+        // Persistent mappings write without an unmap, which a mirror can't see.
+        if (ubo_shadow_t* s = ubo_shadow_of(find_bound_buffer_by_target(target))) s->proxyable = false;
+        ubo_mirror_respecify(find_bound_buffer_by_target(target), static_cast<size_t>(size), data);
         if (hardware->emulate_texture_buffer)
             mg_tbo_refresh_if_backing(find_bound_buffer_by_target(target));
     }
@@ -1223,9 +1565,34 @@ void glBufferStorage(GLenum target, GLsizeiptr size, const void* data, GLbitfiel
 void glFlushMappedBufferRange(GLenum target, GLintptr offset, GLsizeiptr length) {
     LOG()
     if (!global_settings.buffer_coherent_as_flush) {
+        ubo_restore_generic_for(target);
         borrowed_target_t t(target);
         GLES.glFlushMappedBufferRange(t.target, offset, length);
     }
+}
+
+// Was a plain pass-through in gl/gl_native.cpp; it lives here so a copy into a
+// buffer that backs uniform-block proxies reaches the CPU mirror.
+void glCopyBufferSubData(GLenum readTarget, GLenum writeTarget, GLintptr readOffset, GLintptr writeOffset,
+                         GLsizeiptr size) {
+    LOG()
+    ubo_restore_generic_for(readTarget);
+    ubo_restore_generic_for(writeTarget);
+    GLES.glCopyBufferSubData(readTarget, writeTarget, readOffset, writeOffset, size);
+    CHECK_GL_ERROR
+    if (size <= 0 || readOffset < 0 || writeOffset < 0) return;
+    const GLuint dst = find_bound_buffer_by_target(writeTarget);
+    ubo_shadow_t* d = ubo_shadow_of(dst);
+    if (!d) return;
+    const size_t ro = static_cast<size_t>(readOffset), wo = static_cast<size_t>(writeOffset);
+    const size_t n = static_cast<size_t>(size);
+    ubo_shadow_t* s = ubo_shadow_of(find_bound_buffer_by_target(readTarget));
+    if (d->valid && s && s->valid && ro + n <= s->bytes.size() && wo + n <= d->bytes.size()) {
+        memmove(d->bytes.data() + wo, s->bytes.data() + ro, n);
+    } else {
+        d->valid = false; // re-read from the driver when next needed
+    }
+    ubo_refresh_slots(dst, wo, wo + n);
 }
 
 void glGenVertexArrays(GLsizei n, GLuint* arrays) {

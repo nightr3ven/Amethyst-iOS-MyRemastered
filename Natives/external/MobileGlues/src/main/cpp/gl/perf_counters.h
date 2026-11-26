@@ -19,6 +19,14 @@ inline std::atomic<uint64_t> mg_perf_subdraws{0};
 inline std::atomic<uint64_t> mg_perf_bytes{0};
 inline thread_local int mg_perf_depth = 0;
 
+// Uniform-block proxy (gl/buffer.cpp): binds redirected, proxy uploads (the
+// rest were unchanged and skipped), binds passed through untouched, and
+// one-off read-backs that seeded a CPU mirror.
+inline std::atomic<uint64_t> mg_perf_ubo_proxied{0};
+inline std::atomic<uint64_t> mg_perf_ubo_uploads{0};
+inline std::atomic<uint64_t> mg_perf_ubo_passthrough{0};
+inline std::atomic<uint64_t> mg_perf_ubo_readbacks{0};
+
 inline bool mg_perf_enabled() {
     static const bool on = [] {
         const char* e = getenv("MG_PERF");
