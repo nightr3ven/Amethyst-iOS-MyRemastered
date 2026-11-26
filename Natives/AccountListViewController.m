@@ -184,7 +184,7 @@
     //   幂等:已注入过就不再注入。按钮挂在本 VC 的 navigationItem 上 ⇒ 只有本页可见,
     //   push 出去的登录页用的是它自己的 navigationItem,不受影响。
     if (!self.navigationItem.rightBarButtonItem) {
-        UIBarButtonItem *avatarItem = [[UIBarButtonItem alloc] initWithTitle:localize(@"i18n_str_416", @"自定义头像")
+        UIBarButtonItem *avatarItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"person.crop.circle.badge.plus"]
                                                                       style:UIBarButtonItemStylePlain
                                                                      target:self
                                                                      action:@selector(ameAccountAvatarSettingsTapped)];

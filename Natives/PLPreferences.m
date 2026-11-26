@@ -35,7 +35,7 @@ NSString *const PREF_MOD_MIRROR = @"general.mod_mirror";
     // Preferences that can be isolated
     NSMutableDictionary<NSString *, NSMutableDictionary *> *defaults = @{
         @"general": @{
-            @"check_sha": @YES,
+            @"check_sha": @NO,   // ON restores the unpatched iOS bridge jar; keep off
             // 启动时自动检查更新。必须在此注册：键不存在时 PLPreferences 的
             // setter 会静默失败，用户关掉开关也存不住，下次启动又会被
             // +autoCheckEnabled 当作"缺省"写回 @YES（本仓已知的坑）。

@@ -13,6 +13,7 @@
 #import "ModsManagerViewController.h"
 #import "AMEModsViewController.h"
 #import "AMEPacksViewController.h"
+#import "AMEWorldsViewController.h"
 #import "ShadersManagerViewController.h"
 #import "ResourcePacksManagerViewController.h"
 #import "DataPacksManagerViewController.h"
@@ -366,20 +367,9 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
             vc = [[AMEPacksViewController alloc] initWithProfileName:self.profileName kind:AMEModrinthKindResourcePack];
             break;
         }
-        case 3: {
-            WorldsManagerViewController *w = [[WorldsManagerViewController alloc] init];
-            w.profileName = self.profileName;
-            w.initialMode = WorldsManagerModeLocal;
-            vc = w;
+        case 3:
+            vc = [[AMEWorldsViewController alloc] initWithProfileName:self.profileName];
             break;
-        }
-        case 4: {
-            DataPacksManagerViewController *d = [[DataPacksManagerViewController alloc] init];
-            d.profileName = self.profileName;
-            d.initialMode = DataPacksManagerModeLocal;
-            vc = d;
-            break;
-        }
     }
     if (!vc) return;
     // The managers act on the selected instance in a few places, so select it.
@@ -396,7 +386,7 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     switch ((AMEInstanceSection)section) {
         case AMEInstanceSectionPlay:     return 1;
-        case AMEInstanceSectionContent:  return 6;
+        case AMEInstanceSectionContent:  return 5;
         case AMEInstanceSectionSettings: return 2;
         case AMEInstanceSectionDelete:   return 1;
         default: return 0;
@@ -466,8 +456,7 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
                 @[@"Mods", @"puzzlepiece.extension.fill", UIColor.systemOrangeColor],
                 @[@"Shaders", @"sparkles", UIColor.systemPurpleColor],
                 @[@"Resource packs", @"paintpalette.fill", UIColor.systemPinkColor],
-                @[@"Worlds", @"globe.americas.fill", UIColor.systemGreenColor],
-                @[@"Data packs", @"doc.zipper", UIColor.systemTealColor],
+                @[@"Worlds & data packs", @"globe.americas.fill", UIColor.systemGreenColor],
             ];
             NSArray *row = rows[indexPath.row - 1];
             cell.textLabel.text = row[0];

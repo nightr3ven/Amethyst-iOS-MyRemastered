@@ -625,6 +625,8 @@
 - (void)actionOpenFilePicker:(void (^)(NSString *name))handler {
     FileListViewController *vc = [[FileListViewController alloc] init];
     vc.listPath = [NSString stringWithFormat:@"%s/controlmap", getenv("POJAV_HOME")];
+    vc.currentName = self.currentFileName;
+    vc.title = @"Switch layout";
     vc.whenItemSelected = handler;
     vc.modalPresentationStyle = UIModalPresentationPopover;
     vc.preferredContentSize = CGSizeMake(350, 250);

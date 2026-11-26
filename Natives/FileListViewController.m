@@ -33,6 +33,8 @@
         }
     }
 
+    [self.fileList sortUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
+    if (self.title.length == 0) self.title = @"Layouts";
     [self.tableView setSeparatorStyle:UITableViewCellSeparatorStyleSingleLine];
 
     // 监听背景 UI 效果变化通知，当用户切换背景效果（半透明/毛玻璃）时重新应用透明化
@@ -64,7 +66,9 @@
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:@"cell"];
     }
 
-    cell.textLabel.text = [self.fileList objectAtIndex:indexPath.row];
+    NSString *name = [self.fileList objectAtIndex:indexPath.row];
+    cell.textLabel.text = [name isEqualToString:@"default"] ? @"Default" : name;
+    cell.accessoryType = [name isEqualToString:self.currentName] ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
     return cell;
 }
 
@@ -72,6 +76,14 @@
     [self dismissViewControllerAnimated:YES completion:nil];
 
     self.whenItemSelected(self.fileList [indexPath.row]);
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    return self.fileList.count > 1 ? @"Swipe left to delete a layout." : nil;
+}
+
+- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
+    return ![self.fileList[indexPath.row] isEqualToString:self.currentName];
 }
 
 - (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {

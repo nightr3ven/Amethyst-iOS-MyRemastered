@@ -69,21 +69,32 @@ static AMESettingsItem *AMECustom(NSString *title, NSString *subtitle, NSString 
         @[accounts],
         @[
             AMEPage(@"Graphics", @"Renderer, resolution, frame rate", @"display", UIColor.systemPurpleColor, @[
-                @[@"video", @[@"renderer", @"resolution", @"performance_hud", @"disable_game_vsync", @"fullscreen_airplay"]],
+                @[@"video", @[@"resolution", @"renderer"], @"Quality"],
+                @[@"video", @[@"performance_hud", @"disable_game_vsync"], @"Frame rate"],
+                @[@"video", @[@"fullscreen_airplay"], @"External display"],
             ]),
             AMEPage(@"Controls", @"Touch, mouse, gamepad, keyboard", @"gamecontroller.fill", UIColor.systemGreenColor, @[
-                @[@"control"],
-                @[@"debug", @[@"debug_auto_correction", @"debug_hide_home_indicator"]],
+                @[@"control", @[@"custom_controls", @"button_scale", @"menu_button_visible", @"hardware_hide", @"recording_hide"], @"On-screen buttons"],
+                @[@"control", @[@"tap_click_enable", @"tap_click_button_right", @"press_duration", @"slideable_hotbar", @"gesture_hotbar", @"disable_haptics"], @"Touch"],
+                @[@"control", @[@"two_finger_keyboard"], @"Keyboard"],
+                @[@"debug", @[@"debug_auto_correction"], @""],
+                @[@"control", @[@"virtmouse_enable", @"mouse_speed", @"mouse_scale", @"gesture_mouse", @"bt_pointer_enable", @"custom_mouse_pointer", @"reset_mouse_pointer"], @"Mouse"],
+                @[@"control", @[@"default_gamepad_ctrl", @"gyroscope_enable", @"gyroscope_sensitivity", @"gyroscope_invert_x_axis"], @"Controller & motion"],
+                @[@"control", @[@"mod_touch_enable"], @"Mods"],
+                @[@"debug", @[@"debug_hide_home_indicator"], @"Screen"],
             ]),
             AMEPage(@"Sound", nil, @"speaker.wave.2.fill", UIColor.systemPinkColor, @[
                 @[@"video", @[@"silence_other_audio", @"silence_with_switch", @"allow_microphone"]],
             ]),
             AMEPage(@"Memory & Java", @"How much RAM the game gets", @"memorychip.fill", UIColor.systemOrangeColor, @[
-                @[@"java", @[@"auto_ram", @"allocated_memory", @"manage_runtime", @"java_args", @"env_variables"]],
+                @[@"java", @[@"auto_ram", @"allocated_memory"], @"Memory"],
+                @[@"java", @[@"manage_runtime", @"java_args", @"env_variables"], @"Java"],
             ]),
             AMEPage(@"Downloads", @"Where mods and versions come from", @"arrow.down.circle.fill", UIColor.systemTealColor, @[
-                @[@"download"],
-                @[@"general", @[@"curseforge_api_key", @"mod_mirror"]],
+                // check_sha is deliberately hidden: turning it on makes the launcher
+                // "repair" the patched iOS bridge jar and the game stops starting.
+                @[@"download", @[@"mod_mirror"], @"Mods"],
+                @[@"general", @[@"curseforge_api_key"], @""],
             ]),
             AMEPage(@"Appearance", @"Theme and background", @"paintbrush.fill", UIColor.systemIndigoColor, @[
                 @[@"general", @[@"ui_theme", @"launcher_background"]],
@@ -94,11 +105,13 @@ static AMESettingsItem *AMECustom(NSString *title, NSString *subtitle, NSString 
                 @[@"ai"],
             ]),
             AMEPage(@"Advanced", @"JIT, renderer internals, debugging, reset", @"wrench.and.screwdriver.fill", UIColor.systemGrayColor, @[
-                @[@"debug", @[@"jit_enabler", @"debug_universal_script_jit", @"debug_always_attached_jit", @"debug_skip_wait_jit", @"jit26_script_disable"]],
-                @[@"mobileglues"],
-                @[@"video", @[@"sfpew_overlay"]],
-                @[@"java", @[@"dyld_bypass"]],
-                @[@"general", @[@"multi_threaded", @"cosmetica", @"debug_logging", @"reset_warnings", @"reset_settings"]],
+                @[@"debug", @[@"jit_enabler", @"debug_universal_script_jit", @"debug_always_attached_jit", @"debug_skip_wait_jit", @"jit26_script_disable"], @"JIT"],
+                @[@"mobileglues", [NSNull null], @"MobileGlues (graphics internals)"],
+                @[@"video", @[@"sfpew_overlay"], @"Diagnostics"],
+                @[@"general", @[@"debug_logging"], @""],
+                @[@"java", @[@"dyld_bypass"], @"Loading"],
+                @[@"general", @[@"multi_threaded", @"cosmetica"], @"Game"],
+                @[@"general", @[@"reset_warnings", @"reset_settings"], @"Reset"],
             ]),
         ],
     ];

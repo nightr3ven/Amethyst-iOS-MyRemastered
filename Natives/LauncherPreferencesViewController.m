@@ -2083,9 +2083,11 @@
     if (self.ameCategory.count == 0) return;
     NSMutableArray<NSString *> *sections = [NSMutableArray array];
     NSMutableArray<NSArray *> *contents = [NSMutableArray array];
+    NSMutableArray<NSString *> *headers = [NSMutableArray array];
     for (NSArray *entry in self.ameCategory) {
         NSString *sectionKey = entry.firstObject;
-        NSArray<NSString *> *keys = entry.count > 1 ? entry[1] : nil;
+        id rawKeys = entry.count > 1 ? entry[1] : nil;
+        NSArray<NSString *> *keys = [rawKeys isKindOfClass:NSArray.class] ? rawKeys : nil;   // NSNull = whole section
         NSUInteger index = [self.prefSections indexOfObject:sectionKey];
         if (index == NSNotFound || index >= self.prefContents.count) continue;
         NSArray<NSDictionary *> *items = self.prefContents[index];
@@ -2103,7 +2105,9 @@
         if (kept.count == 0) continue;
         [sections addObject:sectionKey];
         [contents addObject:kept];
+        [headers addObject:entry.count > 2 ? entry[2] : @""];
     }
+    self.ameHeaders = headers;
     self.prefSections = sections;
     self.prefContents = contents;
     self.noSectionHeaderRows = YES;
@@ -2114,7 +2118,9 @@
 #pragma mark - UITableView Delegate
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (!self.ameCategory || self.filteredItems || self.prefSections.count < 2) return nil;
+    if (!self.ameCategory || self.filteredItems) return nil;
+    if (section < (NSInteger)self.ameHeaders.count && self.ameHeaders[section].length) return self.ameHeaders[section];
+    if (self.prefSections.count < 2) return nil;
     NSString *key = [NSString stringWithFormat:@"preference.section.%@", self.prefSections[section]];
     NSString *title = localize(key, nil);
     return [title isEqualToString:key] ? self.prefSections[section].capitalizedString : title;

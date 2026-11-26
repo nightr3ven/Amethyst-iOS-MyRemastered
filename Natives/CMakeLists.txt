@@ -412,6 +412,7 @@ add_executable(AngelAuraAmethyst
   AMEControlPropertiesViewController.m # redesigned on-screen control editor panel
   AMEModsViewController.m      # redesigned per-instance Mods page
   AMEPacksViewController.m     # redesigned Shaders / Resource packs pages
+  AMEWorldsViewController.m    # redesigned Worlds page with per-world data packs
   ScreenUtils.m
 
   authenticator/BaseAuthenticator.m

@@ -2133,6 +2133,15 @@ int launchJVM(NSString *accountId, id launchTarget, int width, int height, int m
             if (metallumMcVersionId.length > 0) {
                 PUSH_MARGV_FORMAT(@"-Dmetallum.mc.version=%@", metallumMcVersionId);
             }
+            // The agent's shader-capability reporter thread loads Minecraft
+            // classes while Fabric is still applying mixins, which can deadlock
+            // startup (black screen, FPS 0). It only matters for the Metal
+            // renderer, so turn it off for everything else.
+            const char *activeRenderer = getenv("AMETHYST_RENDERER");
+            if (!(activeRenderer && strcasestr(activeRenderer, "metal"))) {
+                PUSH_MARGV_FORMAT(@"-Dmetallum.shadercap=%@", @"0");
+                NSLog(@"[JavaLauncher] Metallum shadercap reporter disabled (renderer=%s)", activeRenderer ?: "?");
+            }
             NSLog(@"[JavaLauncher] Metallum agent enabled: -javaagent:metallum_agent.jar (mcVersion=%@)",
                   metallumMcVersionId);
         } else {

@@ -354,16 +354,15 @@
     NSString *formatLabel = formatLabels[format] ?: format;
 
     NSMutableString *message = [NSMutableString string];
-    [message appendFormat:localize(@"i18n_str_576", nil), fileName];
-    [message appendFormat:localize(@"i18n_str_577", nil), formatLabel];
-    [message appendFormat:localize(@"i18n_str_578", nil), name];
-    [message appendFormat:localize(@"i18n_str_579", nil), version];
+    (void)formatLabel; (void)fileName;   // file name and format aren't useful to show
+    [message appendString:name ?: @""];
+    if (version.length) [message appendFormat:@" %@", version];
     if (author.length > 0) {
         [message appendFormat:localize(@"i18n_str_2056", nil), author];
     }
     [message appendString:@"\n"];
-    [message appendFormat:@"Minecraft: %@\n", mcVersion];
-    [message appendFormat:localize(@"i18n_str_581", nil), loader];
+    [message appendFormat:@"Minecraft %@ · ", mcVersion];
+    [message appendString:loader ?: @"Vanilla"];
     if (loaderVersion.length > 0) {
         [message appendFormat:@" %@", loaderVersion];
     }

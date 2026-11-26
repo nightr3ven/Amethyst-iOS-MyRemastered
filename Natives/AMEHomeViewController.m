@@ -249,7 +249,8 @@ static NSString *const kRowCell = @"row";
 }
 
 - (void)pickVersion {
-    [LauncherRightPanelViewController norightPostAction:@"versionPicker"];
+    // Instances are the one place to pick what you play; no raw version sheet.
+    [self switchToTab:AmeTabInstances];
 }
 
 - (void)manageAccounts {
@@ -369,7 +370,7 @@ static NSString *const kRowCell = @"row";
     AMEHomeHeroCell *cell = [tableView dequeueReusableCellWithIdentifier:kHeroCell forIndexPath:indexPath];
 
     cell.titleLabel.text = [self currentVersionTitle];
-    [AMEDesign setTitle:@"Change version" ofButton:cell.versionButton];
+    [AMEDesign setTitle:@"Switch instance" ofButton:cell.versionButton];
     [AMEDesign setTitle:[self currentAccountTitle] ofButton:cell.accountButton];
 
     NSString *jit = self.state[@"jit"];

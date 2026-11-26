@@ -667,6 +667,14 @@ static NSString *const kGitHubIssuesURL = @"https://github.com/herbrine8403/Amet
     }
 
     // 6. 基于日志关键词分析（其他 exitCode）
+    // Fabric refused to start because of incompatible mods; name the mod.
+    if ([lowerLog containsString:@"incompatible mods found"] || [lowerLog containsString:@"incompatible mod set"] ||
+        [lowerLog containsString:@"mod resolution failed"]) {
+        self.crashType = CrashTypeModConflict;
+        self.crashDetail = [self extractLineContaining:@"requires" fromLog:lowerLog] ?: [self extractLineContaining:@"breaks" fromLog:lowerLog]
+            ?: [self extractLineContaining:@"incompatible" fromLog:lowerLog];
+        return;
+    }
     // Mod 冲突
     if ([lowerLog containsString:@"nosuchmethoderror"] || [lowerLog containsString:@"classcastexception"] ||
         [lowerLog containsString:@"illegalaccessexception"] || [lowerLog containsString:@"nosuchfielderror"] ||
@@ -831,11 +839,10 @@ static NSString *const kGitHubIssuesURL = @"https://github.com/herbrine8403/Amet
     // 不重启应用，与 FCL 的"退出"行为一致。
     _exitButton = [self createButtonWithTitle:localize(@"crash.return_launcher", @"退出启动器")
                                          icon:@"xmark.circle.fill"
-                                backgroundColor:[UIColor colorWithRed:0.85 green:0.2 blue:0.2 alpha:1.0]
-                                    textColor:[UIColor whiteColor]
-                                       bold:YES
+                                backgroundColor:[[UIColor whiteColor] colorWithAlphaComponent:0.08]
+                                    textColor:[UIColor secondaryLabelColor]
+                                       bold:NO
                                        action:@selector(exitLauncherAction)];
-    [container addArrangedSubview:_exitButton];
 
     // 3. 分享日志按钮
     _shareButton = [self createButtonWithTitle:localize(@"crash.share_log", @"分享日志")
@@ -845,6 +852,8 @@ static NSString *const kGitHubIssuesURL = @"https://github.com/herbrine8403/Amet
                                         bold:NO
                                         action:@selector(shareLog)];
     [container addArrangedSubview:_shareButton];
+    // Order: Back to launcher (main), Share log, Close app (quiet).
+    [container addArrangedSubview:_exitButton];
 
     // 4. GitHub Issues 按钮
     _githubButton = [self createButtonWithTitle:localize(@"crash.github_issue", @"前往 GitHub Issues")
@@ -853,7 +862,7 @@ static NSString *const kGitHubIssuesURL = @"https://github.com/herbrine8403/Amet
                                       textColor:[UIColor whiteColor]
                                          bold:NO
                                          action:@selector(openGitHubIssues)];
-    [container addArrangedSubview:_githubButton];
+    // Not shown: it pointed at the upstream project's issue tracker.
 
     // 5. 查看完整日志按钮（透明文字按钮）
     _fullLogButton = [UIButton buttonWithType:UIButtonTypeSystem];
