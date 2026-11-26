@@ -379,6 +379,7 @@ static bool ame_shouldReusePrimaryWindow(void) {
 // Air Task52 对齐：嵌入宿主后的 SDL 视图引用（供 gl_bridge 的可见性/z 序
 // 守卫做同一性比较）。只保存不持有（__bridge 裸指针语义由访问器提供）。
 static UIView *ame_embeddedSDLView = NULL;
+static void ame_textInputLogView(void);
 
 static UIView *ame_findSDLView(UIView *from) {
     Class sdlClass = NSClassFromString(@"SDL_uikitview");
@@ -1615,6 +1616,8 @@ static bool ame_SDL_StartTextInput(void *window) {
     return ame_dispatchTextInputToMain(^{
         if (ame_real_StartTextInput != NULL) ame_real_StartTextInput(window);
         ame_attachKeyboardToolbarToSDL(window);
+        NSLog(@"[TEXTINPUT] keyboard requested");
+        ame_textInputLogView();
     });
 }
 
@@ -1634,7 +1637,48 @@ static bool ame_SDL_StopTextInput(void *window) {
     });
 }
 
+// MC's text boxes hand SDL their text-input area while they're focused. On iOS
+// every call re-runs SDL's keyboard layout on the main thread
+// (-[SDL_uikitviewcontroller updateKeyboard] resets the view frame and its
+// keyboard-avoidance offset), and the view is embedded in Air's hierarchy, so
+// repeating it while the keyboard is up churns the layout under the game.
+// Identical repeats are dropped. [TEXTINPUT] logs how often MC calls it and
+// any frame/offset SDL gives its view.
+static void ame_textInputLogView(void) {
+    static CGRect lastFrame;
+    static CGFloat lastTy = 0;
+    static int budget = 40;
+    UIView *v = ame_embeddedSDLView;
+    if (v == nil || budget <= 0) return;
+    if (CGRectEqualToRect(v.frame, lastFrame) && v.transform.ty == lastTy) return;
+    lastFrame = v.frame;
+    lastTy = v.transform.ty;
+    budget--;
+    NSLog(@"[TEXTINPUT] SDL view frame %@ transform ty %.1f", NSStringFromCGRect(v.frame), v.transform.ty);
+}
+
 static bool ame_SDL_SetTextInputArea(void *window, const void *rect, int cursor) {
+    static ame_SDLRect lastRect;
+    static int lastCursor = 0;
+    static bool haveLast = false;
+    static int calls = 0, applied = 0;
+    static uint64_t windowStart = 0;
+    uint64_t now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+    if (windowStart == 0) windowStart = now;
+    calls++;
+    if (now - windowStart >= 5000000000ull) {
+        NSLog(@"[TEXTINPUT] SetTextInputArea: %d calls, %d applied in %.0f s", calls, applied,
+              (now - windowStart) / 1e9);
+        calls = 0; applied = 0; windowStart = now;
+    }
+    if (rect != NULL && haveLast && cursor == lastCursor && memcmp(rect, &lastRect, sizeof(lastRect)) == 0) {
+        return true;
+    }
+    haveLast = rect != NULL;
+    if (rect != NULL) memcpy(&lastRect, rect, sizeof(lastRect));
+    lastCursor = cursor;
+    applied++;
+
     // rect 由调用方栈上持有，且 block 是异步执行的 —— 不能把局部变量的地址
     // 传进 block（函数返回后失效）。改堆分配，由 block 在使用后释放。
     ame_SDLRect *heapRect = NULL;
@@ -1656,6 +1700,7 @@ static bool ame_SDL_SetTextInputArea(void *window, const void *rect, int cursor)
             ame_real_SetTextInputArea(window, heapRect, cursor);
         }
         free(heapRect);
+        ame_textInputLogView();
     });
     return true;
 }

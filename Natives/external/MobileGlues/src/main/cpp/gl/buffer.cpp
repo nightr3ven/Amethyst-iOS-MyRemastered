@@ -1434,13 +1434,26 @@ void glBufferData(GLenum target, GLsizeiptr size, const void* data, GLenum usage
 // 30-100 ms at a time (Air's sampler: CommandBuffer::commit under
 // glBufferSubData). Such an upload goes into a fresh staging buffer instead and
 // is copied across on the GPU; Metal on iOS blits at any byte offset.
-// MG_UNALIGNED_STAGING=0 turns it off.
-static bool mg_stage_unaligned_upload(GLenum target, GLintptr offset, GLsizeiptr size, const void* data) {
+//
+// Aligned uploads into a large buffer go the same way. For those ANGLE
+// usually allocates a whole new Metal buffer the size of the destination,
+// copies the new bytes in and blits the rest across
+// (putDataInNewBufferAndStartUsingNewBuffer). Sodium's chunk buffers are many
+// megabytes, so walking into new chunks allocated 64 MB within moments, and
+// ANGLE's buffer manager answers that by waiting for the GPU to finish
+// everything (flushCommandBuffer(WaitUntilFinished) in BufferManager::
+// getBuffer) -- the choppy chunk loading. Staging allocates only the upload's
+// size, from recycled power-of-two buffers.
+// MG_UPLOAD_STAGING=0 turns it off.
+constexpr size_t kStageLargeBuffer = 1024 * 1024;
+static bool mg_stage_upload(GLenum target, size_t dest_size, GLintptr offset, GLsizeiptr size, const void* data) {
     static const bool on = [] {
-        const char* e = getenv("MG_UNALIGNED_STAGING");
+        const char* e = getenv("MG_UPLOAD_STAGING");
         return !(e && e[0] == '0');
     }();
-    if (!on || data == nullptr || offset < 0 || size < 16 || ((offset | size) & 3) == 0) return false;
+    if (!on || data == nullptr || offset < 0 || size < 16) return false;
+    const bool unaligned = ((offset | size) & 3) != 0;
+    if (!unaligned && dest_size < kStageLargeBuffer) return false;
     if (GLES.glCopyBufferSubData == nullptr) return false;
     const GLenum stage_target = target == GL_COPY_READ_BUFFER ? GL_COPY_WRITE_BUFFER : GL_COPY_READ_BUFFER;
     GLuint& stage = g_bc->upload_stage;
@@ -1466,7 +1479,8 @@ void glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void
     LOG_D("glBufferSubData, target = %s, offset = %p, size = %zi", glEnumToString(target), (void*)offset, size)
     ubo_restore_generic_for(target);
     borrowed_target_t t(target);
-    if (!mg_stage_unaligned_upload(t.target, offset, size, data)) GLES.glBufferSubData(t.target, offset, size, data);
+    if (!mg_stage_upload(t.target, get_buffer_data_size(find_bound_buffer_by_target(target)), offset, size, data))
+        GLES.glBufferSubData(t.target, offset, size, data);
     CHECK_GL_ERROR
     if (offset >= 0 && size > 0)
         ubo_mirror_write(find_bound_buffer_by_target(target), static_cast<size_t>(offset), data,
