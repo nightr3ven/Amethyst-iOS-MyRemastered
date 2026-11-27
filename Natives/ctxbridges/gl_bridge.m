@@ -250,9 +250,10 @@ static void ame_perf_log_gl(uint32_t frames) {
 // ---------------------------------------------------------------------------
 // [PERF-SAMPLE]: a tiny PC sampler for the render thread only. ~500 times a
 // second it suspends that one thread, reads PC/LR, resumes it, and later maps
-// the addresses to "library:function". It never walks stacks or touches the
-// thread's memory (JFR's full sampler killed the game here). Every 5 s it logs
-// where the render thread spent its time. AMETHYST_PERF_SAMPLER=0 disables it.
+// the addresses to "library:function", plus a short frame-pointer walk done
+// only through vm_read_overwrite so a bad frame can't fault (a plain
+// dereference once hit a JVM guard page and took the game down). Every 5 s it logs
+// where the render thread spent its time. Off unless AMETHYST_PERF_SAMPLER=1.
 // ---------------------------------------------------------------------------
 #include <pthread.h>
 #include <ptrauth.h>
@@ -337,15 +338,23 @@ static void *ame_perf_sampler_main(void *arg) {
         arm_thread_state64_t st; mach_msg_type_number_t cnt = ARM_THREAD_STATE64_COUNT;
         kern_return_t kr = thread_get_state(t, ARM_THREAD_STATE64, (thread_state_t)&st, &cnt);
         if (kr == KERN_SUCCESS && g_ame_sample_count < AME_SAMPLES_MAX) {
-            // Frame-pointer walk, strictly inside the render thread's own stack.
+            // Frame-pointer walk over the live part of the render thread's
+            // stack (sp..top). JIT code can leave x29 holding anything, and
+            // HotSpot keeps PROT_NONE guard pages inside the stack range, so
+            // every read goes through vm_read_overwrite, which returns an
+            // error instead of faulting. The walk stops at the first bad frame.
+            uintptr_t sp = (uintptr_t)arm_thread_state64_get_sp(st);
+            uintptr_t lo = sp > g_ame_stack_lo ? sp : g_ame_stack_lo;
             uintptr_t fp = (uintptr_t)arm_thread_state64_get_fp(st);
+            memset(g_ame_ret[g_ame_sample_count], 0, sizeof g_ame_ret[0]);
             for (int k = 0; k < AME_FRAMES; k++) {
-                g_ame_ret[g_ame_sample_count][k] = 0;
-                if (fp < g_ame_stack_lo || fp + 16 > g_ame_stack_hi || (fp & 7)) continue;
-                uintptr_t next = ((uintptr_t *)fp)[0], ret = ((uintptr_t *)fp)[1];
-                g_ame_ret[g_ame_sample_count][k] = (uint64_t)ptrauth_strip((void *)ret, ptrauth_key_return_address);
-                if (next <= fp) { fp = 0; continue; }
-                fp = next;
+                if (fp < lo || fp + 16 > g_ame_stack_hi || (fp & 15)) break;
+                uintptr_t pair[2]; vm_size_t got = 0;
+                if (vm_read_overwrite(mach_task_self(), (vm_address_t)fp, sizeof pair, (vm_address_t)pair, &got) != KERN_SUCCESS ||
+                    got != sizeof pair) break;
+                g_ame_ret[g_ame_sample_count][k] = (uint64_t)ptrauth_strip((void *)pair[1], ptrauth_key_return_address);
+                if (pair[0] <= fp) break;
+                fp = pair[0];
             }
         }
         thread_resume(t);
@@ -365,14 +374,14 @@ static void ame_perf_sampler_note_render_thread(void) {
     if (started) return;
     started = YES;
     const char *e = getenv("AMETHYST_PERF_SAMPLER");
-    if (e && e[0] == '0') return;
+    if (!e || e[0] != '1') return;
     pthread_t self = pthread_self();
     g_ame_stack_hi = (uintptr_t)pthread_get_stackaddr_np(self);
     g_ame_stack_lo = g_ame_stack_hi - pthread_get_stacksize_np(self);
     g_ame_render_thread = mach_thread_self();
     pthread_t th;
     if (pthread_create(&th, NULL, ame_perf_sampler_main, NULL) == 0) pthread_detach(th);
-    NSLog(@"[PERF-SAMPLE] sampling the render thread (AMETHYST_PERF_SAMPLER=0 to disable)");
+    NSLog(@"[PERF-SAMPLE] sampling the render thread (AMETHYST_PERF_SAMPLER=1)");
 }
 
 static void ame77_record_present(uint64_t dur_us, uint64_t now_us) {

@@ -26,4 +26,5 @@ Set these as environment variables on an instance to turn off the MobileGlues pe
 - `MG_UBO_PROXY=0`: uniform-block stand-in buffers
 - `MG_UPLOAD_STAGING=0`: staged buffer uploads
 - `MG_PERF=0`: MobileGlues perf counters
-- `AMETHYST_PERF_SAMPLER=0`: Air's render-thread sampler
+
+Air's render-thread sampler (`[PERF-SAMPLE]` lines) is off by default. Set `AMETHYST_PERF_SAMPLER=1` to turn it on while profiling.
