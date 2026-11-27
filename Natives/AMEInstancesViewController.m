@@ -52,6 +52,24 @@ void AMESelectInstance(NSString *profileName) {
     [NSNotificationCenter.defaultCenter postNotificationName:@"SelectedProfileChanged" object:nil];
 }
 
+// Play from the Instances tab. The launch chain lives on the Home tab's (hidden)
+// launcher panel and presents its progress and JIT screens from there; while the
+// Instances tab is showing, that panel isn't in the window, UIKit refuses to
+// present from it, and Play did nothing. So go Home first, then launch once
+// Home is on screen -- the same path the Home Play button takes.
+static void AMELaunchFromInstances(UIViewController *from) {
+    UITabBarController *tabs = from.tabBarController;
+    [from.navigationController popToRootViewControllerAnimated:NO];
+    if (tabs && tabs.selectedIndex != AmeTabHome && AmeTabHome < (NSInteger)tabs.viewControllers.count) {
+        tabs.selectedIndex = AmeTabHome;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [LauncherRightPanelViewController norightPostAction:@"launch"];
+        });
+        return;
+    }
+    [LauncherRightPanelViewController norightPostAction:@"launch"];
+}
+
 static NSString *AMEVersionIdForProfile(NSString *profileName) {
     NSDictionary *profile = PLProfiles.current.profiles[profileName];
     NSString *v = profile[@"lastVersionId"];
@@ -249,7 +267,7 @@ static void AMEConfirmDelete(UIViewController *host, NSString *profileName, void
         UIAction *play = [UIAction actionWithTitle:@"Play" image:[UIImage systemImageNamed:@"play.fill"] identifier:nil handler:^(UIAction *a) {
             AMESelectInstance(name);
             [AMEModCompatibility checkProfile:name presenter:weakSelf play:^{
-                [LauncherRightPanelViewController norightPostAction:@"launch"];
+                AMELaunchFromInstances(weakSelf);
             }];
         }];
         UIAction *select = [UIAction actionWithTitle:@"Use on Home" image:[UIImage systemImageNamed:@"house"] identifier:nil handler:^(UIAction *a) {
@@ -338,8 +356,9 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
 
 - (void)play {
     AMESelectInstance(self.profileName);
+    __weak typeof(self) weakSelf = self;
     [AMEModCompatibility checkProfile:self.profileName presenter:self play:^{
-        [LauncherRightPanelViewController norightPostAction:@"launch"];
+        AMELaunchFromInstances(weakSelf);
     }];
 }
 
