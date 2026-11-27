@@ -5,6 +5,9 @@
 #import "../utils.h"
 
 #include "../glfw_keycodes.h"
+#include <jni.h>
+#include "../environ.h"
+#include <os/lock.h>
 
 // Left thumbstick directions
 #define DIRECTION_EAST 0
@@ -36,6 +39,84 @@ static void AMEApplyDeadZone(CGFloat *x, CGFloat *y) {
     *y = *y / m * scaled;
 }
 
+// ---------------------------------------------------------------------------
+// Direct gamepad input for controller mods (MidnightControls, Controlify's GLFW
+// driver). LWJGL's glfwGetGamepadState / glfwJoystickPresent on controller 0
+// are answered from the connected GCController. While a mod is polling them,
+// Air stops turning the controller into keys, mouse buttons and cursor motion,
+// so every press isn't handled twice. Vanilla never polls, so it keeps Air's
+// own mapping.
+// ---------------------------------------------------------------------------
+static GCExtendedGamepad *g_ameDirectPad;
+static os_unfair_lock g_ameDirectPadLock = OS_UNFAIR_LOCK_INIT;
+static _Atomic double g_ameDirectPolledAt;
+// Per-instance switch (instance setting "Controller mod"): only then is the
+// controller reported to the game at all. Read when the game launches.
+static BOOL g_ameControllerModEnabled;
+
+void AMEControllerSetModEnabled(BOOL enabled) {
+    g_ameControllerModEnabled = enabled;
+    g_ameDirectPolledAt = 0;
+    NSLog(@"[Controller] controller mod %@ for this instance", enabled ? @"ON (pass-through)" : @"off (Air's built-in mapping)");
+}
+
+static GCExtendedGamepad *AMEDirectPad(void) {
+    if (!g_ameControllerModEnabled) return nil;
+    os_unfair_lock_lock(&g_ameDirectPadLock);
+    GCExtendedGamepad *pad = g_ameDirectPad;
+    os_unfair_lock_unlock(&g_ameDirectPadLock);
+    return pad;
+}
+
+static void AMESetDirectPad(GCExtendedGamepad *pad) {
+    os_unfair_lock_lock(&g_ameDirectPadLock);
+    g_ameDirectPad = pad;
+    os_unfair_lock_unlock(&g_ameDirectPadLock);
+}
+
+// A mod read the gamepad in the last second.
+static BOOL AMEGamepadDirect(void) {
+    if (!g_ameControllerModEnabled) return NO;
+    double t = g_ameDirectPolledAt;
+    return t > 0 && CACurrentMediaTime() - t < 1.0;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_lwjgl_glfw_GLFW_nglfwJoystickPresent(JNIEnv *env, jclass clazz, jint jid) {
+    return (jid == 0 && AMEDirectPad() != nil) ? JNI_TRUE : JNI_FALSE;
+}
+
+// Fills a GLFWgamepadstate: unsigned char buttons[15], then float axes[6] at offset 16.
+JNIEXPORT jboolean JNICALL
+Java_org_lwjgl_glfw_GLFW_nglfwGetGamepadState(JNIEnv *env, jclass clazz, jint jid, jlong statePtr) {
+    GCExtendedGamepad *p = jid == 0 ? AMEDirectPad() : nil;
+    if (p == nil || statePtr == 0) return JNI_FALSE;
+    unsigned char *buttons = (unsigned char *)(intptr_t)statePtr;
+    float *axes = (float *)(buttons + 16);
+    GCControllerButtonInput *b[15] = {
+        p.buttonA, p.buttonB, p.buttonX, p.buttonY,
+        p.leftShoulder, p.rightShoulder,
+        p.buttonOptions, p.buttonMenu, p.buttonHome,
+        p.leftThumbstickButton, p.rightThumbstickButton,
+        p.dpad.up, p.dpad.right, p.dpad.down, p.dpad.left,
+    };
+    for (int i = 0; i < 15; i++) buttons[i] = (b[i] != nil && b[i].isPressed) ? 1 : 0;
+    // GLFW: stick Y is +1 pointing down; triggers run -1 (released) to +1.
+    axes[0] = p.leftThumbstick.xAxis.value;
+    axes[1] = -p.leftThumbstick.yAxis.value;
+    axes[2] = p.rightThumbstick.xAxis.value;
+    axes[3] = -p.rightThumbstick.yAxis.value;
+    axes[4] = p.leftTrigger.value * 2.0f - 1.0f;
+    axes[5] = p.rightTrigger.value * 2.0f - 1.0f;
+    static BOOL logged = NO;
+    if (!logged) {
+        logged = YES;
+        NSLog(@"[Controller] a mod is reading the gamepad directly; Air's own controller mapping is paused while it does");
+    }
+    g_ameDirectPolledAt = CACurrentMediaTime();
+    return JNI_TRUE;
+}
+
 @implementation ControllerInput
 
 NSMutableDictionary *gameMap, *menuMap;
@@ -55,6 +136,7 @@ BOOL leftShiftHeld;
 }
 
 + (void)sendKeyEvent:(int)controllerKeycode pressed:(BOOL)pressed {
+    if (AMEGamepadDirect()) return;  // a controller mod handles the pad itself
     // Unmapped buttons (e.g. Home) must do nothing, not send whatever was on the stack.
     int keycode = GLFW_KEY_UNKNOWN;
     __block NSMutableDictionary *mapping;
@@ -106,6 +188,7 @@ BOOL leftShiftHeld;
 
 + (void)registerControllerCallbacks:(GCController *)controller {
     GCExtendedGamepad *gamepad = controller.extendedGamepad;
+    if (gamepad) AMESetDirectPad(gamepad);
 
     gamepad.leftShoulder.pressedChangedHandler = ^(GCControllerButtonInput *button, float value, BOOL pressed) {
         [self sendKeyEvent:GLFW_GAMEPAD_BUTTON_LEFT_BUMPER pressed:pressed];
@@ -157,6 +240,9 @@ BOOL leftShiftHeld;
     };
 
     gamepad.leftThumbstick.valueChangedHandler = ^(GCControllerDirectionPad * _Nonnull dpad, float xValue, float yValue) {
+        if (AMEGamepadDirect()) {
+            xValue = 0; yValue = 0;  // release WASD / stop the cursor; the mod moves instead
+        }
         if (!isGrabbing) {
             // Menus: the left stick moves the cursor.
             leftXValue = xValue;
@@ -200,6 +286,7 @@ BOOL leftShiftHeld;
     };
     gamepad.rightThumbstick.valueChangedHandler = ^(GCControllerDirectionPad * _Nonnull dpad, float xValue, float yValue) {
         // Camera in game; in menus it moves the cursor like the left stick.
+        if (AMEGamepadDirect()) { xValue = 0; yValue = 0; }
         lastXValue = xValue;
         lastYValue = yValue;
         AMEApplyDeadZone(&lastXValue, &lastYValue);
@@ -218,6 +305,22 @@ BOOL leftShiftHeld;
 + (void)tick {
     // There isn't a convenient way to get ns, use ms at this point
     CGFloat frameTime = CACurrentMediaTime();
+    if (AMEGamepadDirect()) {
+        lastXValue = lastYValue = leftXValue = leftYValue = 0;
+        lastFrameTime = frameTime;
+        // The mod moves the game cursor (glfwSetCursorPos); keep Air's on-screen
+        // pointer on top of it. Game px = points x screenScale x resolutionScale.
+        SurfaceViewController *vc = [SurfaceViewController currentInstance];
+        CGFloat k = vc.screenScale * resolutionScale;
+        if (vc && !isGrabbing && k > 0) {
+            CGPoint pt = CGPointMake(cursorX / k, cursorY / k);
+            if (fabs(pt.x - virtualMouseFrame.origin.x) > 0.25 || fabs(pt.y - virtualMouseFrame.origin.y) > 0.25) {
+                virtualMouseFrame.origin = pt;
+                vc.mousePointerView.frame = virtualMouseFrame;
+            }
+        }
+        return;
+    }
     // GameController automatically performs deadzone calculations
     // so we just take the raw input
     // In menus either stick moves the cursor; use whichever is pushed further.
@@ -246,6 +349,13 @@ BOOL leftShiftHeld;
 
 + (void)unregisterControllerCallbacks:(GCController *)controller {
     GCExtendedGamepad *gamepad = controller.extendedGamepad;
+    if (gamepad && AMEDirectPad() == gamepad) {
+        GCController *other = nil;
+        for (GCController *c in GCController.controllers) {
+            if (c != controller && c.extendedGamepad) { other = c; break; }
+        }
+        AMESetDirectPad(other.extendedGamepad);
+    }
     gamepad.leftShoulder.pressedChangedHandler = nil;
     gamepad.rightShoulder.pressedChangedHandler = nil;
     gamepad.leftTrigger.pressedChangedHandler = nil;

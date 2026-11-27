@@ -293,6 +293,7 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
     AMEInstanceSectionPlay,
     AMEInstanceSectionContent,
     AMEInstanceSectionSettings,
+    AMEInstanceSectionController,
     AMEInstanceSectionDelete,
     AMEInstanceSectionCount,
 };
@@ -300,6 +301,7 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
 @interface AMEInstanceViewController ()
 @property(nonatomic, copy) NSString *profileName;
 @property(nonatomic, strong) UISwitch *isolationSwitch;
+@property(nonatomic, strong) UISwitch *controllerModSwitch;
 @end
 
 @implementation AMEInstanceViewController
@@ -321,6 +323,10 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
     self.isolationSwitch = [[UISwitch alloc] init];
     self.isolationSwitch.onTintColor = AMEDesign.accentColor;
     [self.isolationSwitch addTarget:self action:@selector(isolationChanged:) forControlEvents:UIControlEventValueChanged];
+
+    self.controllerModSwitch = [[UISwitch alloc] init];
+    self.controllerModSwitch.onTintColor = AMEDesign.accentColor;
+    [self.controllerModSwitch addTarget:self action:@selector(controllerModChanged:) forControlEvents:UIControlEventValueChanged];
 
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(reload)
                                                name:@"SelectedProfileChanged" object:nil];
@@ -371,6 +377,15 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
                   withRowAnimation:UITableViewRowAnimationNone];
 }
 
+// Controller: Air's built-in mapping (off) or hand the controller to a
+// controller mod such as MidnightControls (on). Read when the game starts.
+- (void)controllerModChanged:(UISwitch *)sender {
+    NSMutableDictionary *profile = PLProfiles.current.profiles[self.profileName];
+    if (!profile) return;
+    profile[@"controllerMod"] = sender.on ? @"1" : @"0";
+    [PLProfiles.current save];
+}
+
 - (void)openContent:(NSInteger)row {
     UIViewController *vc = nil;
     switch (row) {
@@ -407,6 +422,7 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
         case AMEInstanceSectionPlay:     return 1;
         case AMEInstanceSectionContent:  return 5;
         case AMEInstanceSectionSettings: return 2;
+        case AMEInstanceSectionController: return 1;
         case AMEInstanceSectionDelete:   return 1;
         default: return 0;
     }
@@ -416,6 +432,7 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
     switch ((AMEInstanceSection)section) {
         case AMEInstanceSectionContent:  return @"Content";
         case AMEInstanceSectionSettings: return @"Settings";
+        case AMEInstanceSectionController: return @"Controller";
         default: return nil;
     }
 }
@@ -424,6 +441,9 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
     if (section == AMEInstanceSectionPlay) {
         NSString *v = self.versionId;
         return [NSString stringWithFormat:@"%@ · %@ · %@", AMEInstanceLoaderName(v), AMEReadableVersion(v), AMELastPlayedText(self.profileName)];
+    }
+    if (section == AMEInstanceSectionController) {
+        return @"On: your controller goes straight to a controller mod such as MidnightControls, which snaps between inventory slots and menu buttons. Install the mod in Mods. Off: Air's built-in controller controls. Takes effect the next time you play.";
     }
     if (section == AMEInstanceSectionSettings) {
         if (AMEProfileHasOwnFolder(self.profileName)) {
@@ -500,6 +520,15 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
             }
             break;
         }
+        case AMEInstanceSectionController: {
+            cell.textLabel.text = @"Use controller mod";
+            cell.imageView.image = [AMEDesign iconTileWithSymbol:@"gamecontroller.fill" color:UIColor.systemIndigoColor];
+            NSDictionary *profile = PLProfiles.current.profiles[self.profileName];
+            self.controllerModSwitch.on = [profile[@"controllerMod"] isEqual:@"1"];
+            cell.accessoryView = self.controllerModSwitch;
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+            break;
+        }
         case AMEInstanceSectionDelete: {
             cell.textLabel.text = @"Delete instance";
             cell.textLabel.textColor = UIColor.systemRedColor;
@@ -514,6 +543,7 @@ typedef NS_ENUM(NSInteger, AMEInstanceSection) {
 - (BOOL)tableView:(UITableView *)tableView shouldHighlightRowAtIndexPath:(NSIndexPath *)indexPath {
     if (indexPath.section == AMEInstanceSectionPlay) return NO;
     if (indexPath.section == AMEInstanceSectionSettings && indexPath.row == 0) return NO;
+    if (indexPath.section == AMEInstanceSectionController) return NO;
     return YES;
 }
 

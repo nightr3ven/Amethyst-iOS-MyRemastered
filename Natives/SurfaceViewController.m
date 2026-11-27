@@ -312,7 +312,6 @@ static GameSurfaceView* pojavWindow;
 // 现存为属性，dealloc 中统一移除。
 @property(nonatomic) id mousePointerUpdatedCallback;
 
-@property(nonatomic) CGFloat screenScale;
 @property(nonatomic) CGFloat mouseSpeed;
 @property(nonatomic) CGRect clickRange;
 @property(nonatomic) BOOL isMacCatalystApp, shouldHideControlsFromRecording,
@@ -1231,6 +1230,8 @@ static UIView *findSDL_uikitview(UIView *root);
         [ControllerInput unregisterControllerCallbacks:controller];
         if (getPrefBool(@"control.hardware_hide")) { self.ctrlView.hidden = NO; }
     }];
+    // Per-instance "Use controller mod" switch (Instances > instance > Controller).
+    AMEControllerSetModEnabled([PLProfiles.current.selectedProfile[@"controllerMod"] isEqual:@"1"]);
     if (GCController.controllers.count == 1) {
         [ControllerInput initKeycodeTable];
         [ControllerInput registerControllerCallbacks:GCController.controllers.firstObject];

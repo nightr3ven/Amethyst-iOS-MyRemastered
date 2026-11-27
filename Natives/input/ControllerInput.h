@@ -9,3 +9,7 @@
 + (void)tick;
 
 @end
+
+/// Per-instance "Controller mod" switch: pass the controller straight to the game
+/// (for MidnightControls) instead of Air mapping it to keys and mouse.
+void AMEControllerSetModEnabled(BOOL enabled);

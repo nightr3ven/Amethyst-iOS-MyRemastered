@@ -17,6 +17,7 @@ CGPoint lastVirtualMousePoint;
 @property(nonatomic) GameSurfaceView* surfaceView;
 @property(nonatomic) UIView *touchView;
 @property UIImageView* mousePointerView;
+@property(nonatomic) CGFloat screenScale;
 @property(nonatomic) UIPanGestureRecognizer* scrollPanGesture;
 
 @property(nonatomic) UIView* rootView;

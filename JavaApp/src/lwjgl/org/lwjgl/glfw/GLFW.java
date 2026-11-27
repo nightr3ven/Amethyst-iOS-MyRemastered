@@ -1249,10 +1249,14 @@ public class GLFW
     public static void glfwRequestWindowAttention(@NativeType("GLFWwindow *") long window) {
     }
 
+    // Controller 0 is the connected iOS game controller when the instance's
+    // "Use controller mod" switch is on (Air answers from GCController);
+    // otherwise no controller is reported and Air maps the pad to keys itself.
+    private static native boolean nglfwJoystickPresent(int jid);
+    private static native boolean nglfwGetGamepadState(int jid, long state);
+
     public static boolean glfwJoystickPresent(int jid) {
-        if(jid == 0) {
-            return true;
-        }else return false;
+        return jid == 0 && nglfwJoystickPresent(jid);
     }
     public static String glfwGetJoystickName(int jid) {
         if(jid == 0) {
@@ -1273,8 +1277,7 @@ public class GLFW
         return null;
     }
     public static boolean glfwJoystickIsGamepad(int jid) {
-        if(jid == 0) return true;
-        else return false;
+        return glfwJoystickPresent(jid);
     }
     public static String glfwGetJoystickGUID(int jid) {
         if(jid == 0) return "aio0";
@@ -1290,10 +1293,11 @@ public class GLFW
         return false;
     }
     public static String glfwGetGamepadName(int jid) {
-        return "Unknown";
+        return glfwJoystickPresent(jid) ? "Game Controller" : null;
     }
     public static boolean glfwGetGamepadState(int jid, GLFWGamepadState state) {
-        return false;
+        if (jid != 0 || state == null) return false;
+        return nglfwGetGamepadState(jid, state.address());
     }
 
     /** Array version of: {@link #glfwGetVersion GetVersion} */
