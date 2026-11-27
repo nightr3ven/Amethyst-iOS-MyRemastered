@@ -1,0 +1,35 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+		A1000000000000000000001 = {isa = PBXBuildFile; fileRef = A1000000000000000000002; };
+		A1000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		A1000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		A1000000000000000000004 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AppIDReg.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1000000000000000000005 = {isa = PBXGroup; children = (A1000000000000000000006, A1000000000000000000007); sourceTree = "<group>"; };
+		A1000000000000000000006 = {isa = PBXGroup; children = (A1000000000000000000002, A1000000000000000000003); path = Src; sourceTree = "<group>"; };
+		A1000000000000000000007 = {isa = PBXGroup; children = (A1000000000000000000004); name = Products; sourceTree = "<group>"; };
+		A1000000000000000000008 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A1000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
+		A1000000000000000000009 = {isa = PBXNativeTarget; buildConfigurationList = A100000000000000000000B; buildPhases = (A1000000000000000000008); buildRules = (); dependencies = (); name = AppIDReg; productName = AppIDReg; productReference = A1000000000000000000004; productType = "com.apple.product-type.application"; };
+		A100000000000000000000A = {isa = PBXProject; attributes = {LastUpgradeCheck = 1600; TargetAttributes = {A1000000000000000000009 = {CreatedOnToolsVersion = 16.0; }; }; }; buildConfigurationList = A100000000000000000000D; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = A1000000000000000000005; productRefGroup = A1000000000000000000007; projectDirPath = ""; projectRoot = ""; targets = (A1000000000000000000009); };
+		A100000000000000000000B = {isa = XCConfigurationList; buildConfigurations = (A100000000000000000000C); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };
+		A100000000000000000000C = {isa = XCBuildConfiguration; buildSettings = {
+			PRODUCT_BUNDLE_IDENTIFIER = gerwitz.air;
+			PRODUCT_NAME = AppIDReg;
+			INFOPLIST_KEY_CFBundleDisplayName = AppIDReg;
+			GENERATE_INFOPLIST_FILE = YES;
+			CODE_SIGN_ENTITLEMENTS = Src/App.entitlements;
+			CODE_SIGN_STYLE = Automatic;
+			DEVELOPMENT_TEAM = "";
+			IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+			SDKROOT = iphoneos;
+			SWIFT_VERSION = 5.0;
+			TARGETED_DEVICE_FAMILY = "1,2";
+		}; name = Debug; };
+		A100000000000000000000D = {isa = XCConfigurationList; buildConfigurations = (A100000000000000000000E); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };
+		A100000000000000000000E = {isa = XCBuildConfiguration; buildSettings = {SDKROOT = iphoneos; }; name = Debug; };
+	};
+	rootObject = A100000000000000000000A;
+}
