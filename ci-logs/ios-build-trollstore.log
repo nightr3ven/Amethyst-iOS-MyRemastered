@@ -21,13 +21,13 @@ gmake[1]: warning: -j5 forced in submake: resetting jobserver mode.
 [Amethyst v6.0.0] assets - start
 [dep_mg] glslang guards already baked into the tree -- skip patches
 Compiling src/patchsvc/de/maxhenkel/opus4j/OpusEncoder.java
-Compiling src/patchsvc/de/maxhenkel/speex4j/AutomaticGainControl.java
-Compiling src/patchsvc/de/maxhenkel/rnnoise4j/Denoiser.java
-Compiling src/patchsvc/de/maxhenkel/opus4j/OpusDecoder.java
 Compiling src/patchjna_agent/com/sun/jna/Platform.java
+Compiling src/patchsvc/de/maxhenkel/speex4j/AutomaticGainControl.java
+Compiling src/patchsvc/de/maxhenkel/opus4j/OpusDecoder.java
+Compiling src/patchsvc/de/maxhenkel/rnnoise4j/Denoiser.java
 [Amethyst v6.0.0] dep_openal_shim - end
 -- SPIRV-Cross: Finding Git version for SPIRV-Cross.
--- SPIRV-Cross: Git hash: a508dd05+
+-- SPIRV-Cross: Git hash: d24d0850+
 -- Configuring done (0.3s)
 -- Generating done (0.1s)
 -- Build files have been written to: /Users/runner/work/minecraft-ios/minecraft-ios/Natives/build/mobileglues
@@ -36,8 +36,8 @@ gmake[1]: warning: -j5 forced in submake: resetting jobserver mode.
 gmake[1]: Leaving directory '/Users/runner/work/minecraft-ios/minecraft-ios/Natives/build/mobileglues'
 [  5%] Built target spirv-cross-core
 [  7%] Built target spirv-cross-glsl
-[Amethyst v6.0.0] swift - end
 [ 56%] Built target glslang
+[Amethyst v6.0.0] swift - end
 [glslang] FRAMEWORKS libglslang.dylib  2924256 B  md5 4afe653d  C-API 17/17
 [glslang] FRAMEWORKS libglslang.16.dylib  = same bytes as libglslang.dylib (2924256 B)
 [glslang] FRAMEWORKS libglslang.16.4.0.dylib  = same bytes as libglslang.dylib (2924256 B)
@@ -95,17 +95,18 @@ to suppress it.
 -- Configuring done (0.1s)
 -- Generating done (0.0s)
 -- Build files have been written to: /Users/runner/work/minecraft-ios/minecraft-ios/Natives/build/nggl4es
-[shaderc-impl] mode=from-source - end
-[Amethyst v6.0.0] dep_shader_shims - start
 gmake[1]: Entering directory '/Users/runner/work/minecraft-ios/minecraft-ios/Natives/build/nggl4es'
 gmake[1]: warning: -j5 forced in submake: resetting jobserver mode.
 gmake[1]: Leaving directory '/Users/runner/work/minecraft-ios/minecraft-ios/Natives/build/nggl4es'
+[shaderc-impl] mode=from-source - end
+[Amethyst v6.0.0] dep_shader_shims - start
 /Applications/Xcode_26.3.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/install_name_tool: warning: changes being made to the file will invalidate the code signature in: /Users/runner/work/minecraft-ios/minecraft-ios/Natives/build/libspirv-cross-c-shared.0.impl.dylib
 [100%] Built target nggl4es
 [Amethyst v6.0.0] dep_nggl4es - end
 [dep_shader_shims] libmobileglues.dylib: no spirv-cross dylib dependency (statically linked) -- skip
 [Amethyst v6.0.0] dep_shader_shims - end
--- Generating done (0.5s)
+Compiling src/patchsvc/de/maxhenkel/lame4j/Mp3Decoder.java
+-- Generating done (0.9s)
 -- Build files have been written to: /Users/runner/work/minecraft-ios/minecraft-ios/Natives/build
 gmake[1]: Entering directory '/Users/runner/work/minecraft-ios/minecraft-ios/Natives/build'
 gmake[1]: warning: -j5 forced in submake: resetting jobserver mode.
@@ -115,7 +116,6 @@ gmake[1]: Leaving directory '/Users/runner/work/minecraft-ios/minecraft-ios/Nati
 [  2%] Built target audio_capture
 [  0%] Linking C shared library libawt_headless.dylib
 [  2%] Built target awt_headless
-Compiling src/patchsvc/de/maxhenkel/lame4j/Mp3Decoder.java
 [  3%] Built target AFNetworking
 [  2%] Linking C shared library libawt_xawt.dylib
 [  4%] Built target awt_xawt
@@ -139,14 +139,14 @@ Checking for empty class files
 </dict>
 </plist>
 [Amethyst v6.0.0] assets - end
+[100%] Built target AngelAuraAmethyst
+[Amethyst v6.0.0] native - end
+[Amethyst v6.0.0] jre - start
 Creating build/launcher.jar
 Creating build/lwjgl-333.jar
 Creating build/lwjgl-341.jar
 Creating build/patchjna_agent.jar
 Creating build/patchsvc.jar
-[100%] Built target AngelAuraAmethyst
-[Amethyst v6.0.0] native - end
-[Amethyst v6.0.0] jre - start
 ★ [JRE-NEST] java_runtimes/java-8-openjdk OK
 ★ [JRE-NEST] java_runtimes/java-17-openjdk OK
 ★ [JRE-NEST] java_runtimes/java-21-openjdk OK
@@ -154,16 +154,16 @@ Creating build/patchsvc.jar
 [Amethyst v6.0.0] jre - end
 Created build/mojang-stubs.jar (Forge module-layer com.mojang.text2speech stubs, Task158)
 # 仓库根 lwjgl.jar 里混入了 3 个用 JDK 25 编译的类（major 69）：
+#   org/lwjgl/openal/SOFTSystemEvent{,s,ProcI}.class
+# 它是"3.3.3 提供 3.4.1 API 兼容"的定制版，这 3 个类是从 3.4.1 一并塞进来的。
 # 仓库根 lwjgl.jar 里混入了 3 个用 JDK 25 编译的类（major 69）：
-#   org/lwjgl/openal/SOFTSystemEvent{,s,ProcI}.class
-#   org/lwjgl/openal/SOFTSystemEvent{,s,ProcI}.class
-# 它是"3.3.3 提供 3.4.1 API 兼容"的定制版，这 3 个类是从 3.4.1 一并塞进来的。
-# 它是"3.3.3 提供 3.4.1 API 兼容"的定制版，这 3 个类是从 3.4.1 一并塞进来的。
 # 3.4.1 自带它们的 Java 8 版本，下一步解压后会被覆盖回来；但 3.3.3 没有这些
-# 3.4.1 自带它们的 Java 8 版本，下一步解压后会被覆盖回来；但 3.3.3 没有这些
+#   org/lwjgl/openal/SOFTSystemEvent{,s,ProcI}.class
 # 类，若保留 JDK 25 版本，Java 8 上的老版本 MC 一旦碰到就会抛
-# 类，若保留 JDK 25 版本，Java 8 上的老版本 MC 一旦碰到就会抛
+# 它是"3.3.3 提供 3.4.1 API 兼容"的定制版，这 3 个类是从 3.4.1 一并塞进来的。
 # UnsupportedClassVersionError。因此在叠加版本化 jar 之前先删掉。
+# 3.4.1 自带它们的 Java 8 版本，下一步解压后会被覆盖回来；但 3.3.3 没有这些
+# 类，若保留 JDK 25 版本，Java 8 上的老版本 MC 一旦碰到就会抛
 # UnsupportedClassVersionError。因此在叠加版本化 jar 之前先删掉。
 Skipping build/lwjgl.jar (lwjgl-333.jar / lwjgl-341.jar are used instead)
 gmake[1]: Leaving directory '/Users/runner/work/minecraft-ios/minecraft-ios/JavaApp'
@@ -216,7 +216,7 @@ Patching vendored glslang in /Users/runner/work/minecraft-ios/minecraft-ios/Nati
 glslang swizzle patch verified
 -- optimizer enabled
 -- SPIRV-Cross: Finding Git version for SPIRV-Cross.
--- SPIRV-Cross: Git hash: a508dd05+
+-- SPIRV-Cross: Git hash: d24d0850+
 -- Could NOT find VulkanHeaders (missing: VulkanHeaders_DIR)
 -- xxHash build type: Debug
 -- Architecture: aarch64
@@ -227,10 +227,10 @@ glslang swizzle patch verified
 gmake[3]: Entering directory '/Users/runner/work/minecraft-ios/minecraft-ios/Natives/build/mobilegl'
 gmake[3]: warning: -j5 forced in submake: resetting jobserver mode.
 gmake[3]: Leaving directory '/Users/runner/work/minecraft-ios/minecraft-ios/Natives/build/mobilegl'
-[  0%] Built target core_tables
-[  0%] Built target enum_string_mapping
-[  0%] Built target spirv-tools-build-version
 [  1%] Built target spirv-tools-header-NonSemanticShaderDebugInfo100
+[  1%] Built target spirv-tools-build-version
+[  1%] Built target core_tables
+[  1%] Built target enum_string_mapping
 [  3%] Built target xxhash
 [  3%] Built target spv-tools-spv-amd-sevp
 [  3%] Built target spv-tools-spv-amd-stm
@@ -239,22 +239,22 @@ gmake[3]: Leaving directory '/Users/runner/work/minecraft-ios/minecraft-ios/Nati
 [  3%] Built target spv-tools-debuginfo
 [  3%] Built target spv-tools-cldi100
 [  4%] Built target spv-tools-shdi100
-[  4%] Built target spv-tools-clspvreflection
 [  4%] Built target spv-tools-vkspreflection
+[  4%] Built target spv-tools-clspvreflection
 [  4%] Built target spirv-tools-header-DebugInfo
 [  4%] Built target spirv-tools-header-OpenCLDebugInfo100
 [  4%] Built target VulkanUtilityHeaders
 [  4%] Built target spirv-reflect-static
 [  4%] Built target extinst_tables
-[  6%] Built target spirv-cross-core
 [  8%] Built target spirv-cross-reflect
+[  8%] Built target spirv-cross-core
 [  8%] Built target spirv-cross-glsl
 [ 24%] Built target SPIRV-Tools-static
 [  8%] Building CXX object 3rdparty/SPIRV-Cross/CMakeFiles/spirv-cross-c.dir/spirv_cross_c.cpp.o
 [ 24%] Linking CXX static library libspirv-cross-c.a
 [ 24%] Built target spirv-cross-c
 [ 50%] Built target SPIRV-Tools-opt
-[ 50%] Building CXX object 3rdparty/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/ParseHelper.cpp.o
+[ 52%] Building CXX object 3rdparty/glslang/glslang/CMakeFiles/glslang.dir/MachineIndependent/ParseHelper.cpp.o
 [ 52%] Building CXX object 3rdparty/glslang/glslang/CMakeFiles/glslang.dir/__/SPIRV/GlslangToSpv.cpp.o
 [ 52%] Linking CXX static library libglslang.a
 [ 62%] Built target glslang
@@ -264,7 +264,7 @@ gmake[3]: Leaving directory '/Users/runner/work/minecraft-ios/minecraft-ios/Nati
 [ 62%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Util/Async/JobNode.cpp.o
 [ 62%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/Init.cpp.o
 [ 63%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Util/Converters/GLToMG/BufferEnumConverter.cpp.o
-[ 63%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Util/Converters/GLToMG/ProgramEnumConverter.cpp.o
+[ 62%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Util/Converters/GLToMG/ProgramEnumConverter.cpp.o
 [ 63%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Util/ShaderTranspiler/CompileEnv.cpp.o
 [ 63%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Util/ShaderTranspiler/ShaderSourceProcessor.cpp.o
 [ 63%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Impl/GLImpl/Sampler/Validators.cpp.o
@@ -308,10 +308,10 @@ gmake[3]: Leaving directory '/Users/runner/work/minecraft-ios/minecraft-ios/Nati
 [ 68%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectGLES/DirectGLES.cpp.o
 [ 70%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectGLES/MultiDraw.cpp.o
 [ 70%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectGLES/Utils.cpp.o
-[ 70%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectGLES/Managers.cpp.o
 [ 70%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectVulkan/DirectVulkan.cpp.o
-[ 72%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectVulkan/Renderer/SwapchainObject.cpp.o
+[ 70%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectGLES/Managers.cpp.o
 [ 70%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectVulkan/BackendObject_DirectVulkan.cpp.o
+[ 72%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectVulkan/Renderer/SwapchainObject.cpp.o
 [ 72%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectVulkan/Renderer/VertexInputStateFactory.cpp.o
 [ 70%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectVulkan/Renderer/VulkanRenderer.cpp.o
 [ 72%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_Backend/DirectVulkan/Renderer/UniformManager.cpp.o
@@ -324,21 +324,21 @@ gmake[3]: Leaving directory '/Users/runner/work/minecraft-ios/minecraft-ios/Nati
 [ 73%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/BufferState/BufferState.cpp.o
 [ 73%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/BufferState/BufferObject.cpp.o
 [ 73%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/Core.cpp.o
-[ 73%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/VertexArrayState/VertexArrayState.cpp.o
 [ 73%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/VertexArrayState/VertexArrayObject.cpp.o
+[ 73%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/VertexArrayState/VertexArrayState.cpp.o
 [ 75%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/TextureState/TextureObjectBuffer.cpp.o
 [ 75%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/TextureState/TextureObject.cpp.o
 [ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/TextureState/TextureUnit.cpp.o
 [ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/TextureState/TextureState.cpp.o
 [ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/ProgramState/ProgramObject.cpp.o
 [ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/ProgramState/ProgramTranslationCache.cpp.o
-[ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/ProgramState/ProgramLinkTask.cpp.o
 [ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/ProgramState/ShaderObject.cpp.o
+[ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/ProgramState/ProgramLinkTask.cpp.o
 [ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/ProgramState/ProgramSpirvTask.cpp.o
 [ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/ProgramState/ShaderCompileTask.cpp.o
 [ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/ProgramState/ShaderCompileAdoptionMap.cpp.o
-[ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/SamplerState/SamplerObject.cpp.o
 [ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/ProgramState/ProgramState.cpp.o
+[ 77%] Building CXX object CMakeFiles/MobileGL.dir/MobileGL/MG_State/GLState/SamplerState/SamplerObject.cpp.o
 [ 77%] Linking CXX shared library libMobileGL.dylib
 [100%] Built target MobileGL
 [Amethyst v6.0.0] dep_mobilegl - rewrote MoltenVK install name (legacy layout)
@@ -356,8 +356,8 @@ Makefile:134: Set PLATFORM to 2, which is equal to iOS.
 [dep_mg] 3rdparty pinned: SPIRV-Cross=a0fba56 glslang=f5f664d (xxhash already matches c2866db)
 [dep_mg] glslang guards already baked into the tree -- skip patches
 -- SPIRV-Cross: Finding Git version for SPIRV-Cross.
--- SPIRV-Cross: Git hash: a508dd05+
--- Configuring done (0.1s)
+-- SPIRV-Cross: Git hash: d24d0850+
+-- Configuring done (0.2s)
 -- Generating done (0.1s)
 -- Build files have been written to: /Users/runner/work/minecraft-ios/minecraft-ios/Natives/build/mobileglues
 gmake[2]: Entering directory '/Users/runner/work/minecraft-ios/minecraft-ios/Natives/build/mobileglues'
@@ -1170,7 +1170,7 @@ Skipped codesigning. If not intentional, check your variables.
   adding: Payload/AngelAuraAmethyst.app/zh-Hant.lproj/Localizable.strings (deflated 69%)
   adding: Payload/AngelAuraAmethyst.app/libs/ (stored 0%)
   adding: Payload/AngelAuraAmethyst.app/libs/metallum_agent.jar (deflated 8%)
-  adding: Payload/AngelAuraAmethyst.app/libs/launcher.jar (deflated 13%)
+  adding: Payload/AngelAuraAmethyst.app/libs/launcher.jar (deflated 12%)
   adding: Payload/AngelAuraAmethyst.app/libs/gson-2.13.1.jar (deflated 11%)
   adding: Payload/AngelAuraAmethyst.app/libs/mojang-stubs.jar (deflated 39%)
   adding: Payload/AngelAuraAmethyst.app/libs/patchsvc.jar (deflated 13%)
