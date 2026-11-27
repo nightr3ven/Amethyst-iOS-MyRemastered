@@ -801,7 +801,7 @@ static BOOL ame_task53_realign_surface(void) {
             CGFloat h55 = MAX(1.0, round(layer.bounds.size.height));
             CGFloat sc55 = layer.contentsScale;
             if (sc55 <= 0.0) sc55 = 1.0;
-            pin55 = CGSizeMake(round(w55 * sc55), round(h55 * sc55));
+            pin55 = CGSizeMake(floor(w55 * sc55), floor(h55 * sc55));  // ANGLE truncates
         } @catch (NSException *e) {
             NSLog(@"[GLGeo] Task55 pin exception: %@", e);
         }
@@ -1139,7 +1139,7 @@ static void ame_task41_swap_forensics(EGLSurface surface, unsigned long swapInde
                         // drawableSize 拉回 1x（模糊回归）。
                         CGFloat sc51 = l.contentsScale;
                         if (sc51 <= 0.0) sc51 = 1.0;
-                        CGSize tgt51 = CGSizeMake(round(bw * sc51), round(bh * sc51));
+                        CGSize tgt51 = CGSizeMake(floor(bw * sc51), floor(bh * sc51));  // ANGLE truncates
                         if (fabs(old.width - tgt51.width) > 0.5 || fabs(old.height - tgt51.height) > 0.5) {
                             ml.drawableSize = tgt51;
                             NSLog(@"[GLGeo] Task51 heal-align (main thread): drawableSize %.0fx%.0f -> %.0fx%.0f == bounds x scale (landscape signal, same direction as Task52 guard heal)",
@@ -1281,8 +1281,8 @@ static void ame_task41_swap_forensics(EGLSurface surface, unsigned long swapInde
                         CGFloat g52_sc = g52_l.contentsScale;
                         if (g52_sc <= 0.0) g52_sc = 1.0;
                         CGSize g52_target = g52_heal
-                            ? CGSizeMake(round(MAX(1.0, round(g52_l.bounds.size.width)) * g52_sc),
-                                         round(MAX(1.0, round(g52_l.bounds.size.height)) * g52_sc))
+                            ? CGSizeMake(floor(MAX(1.0, round(g52_l.bounds.size.width)) * g52_sc),
+                                         floor(MAX(1.0, round(g52_l.bounds.size.height)) * g52_sc))
                             : CGSizeMake(g52_sw, g52_sh);
                         if (fabs(g52_old.width - g52_target.width) > 0.5 ||
                             fabs(g52_old.height - g52_target.height) > 0.5) {
@@ -2137,7 +2137,9 @@ gl_render_window_t* gl_init_context(gl_render_window_t *share) {
             oldDrawable50 = ml60.drawableSize;
             oldScale50 = layer.contentsScale;
             layer.contentsScale = scale60 * rs60;
-            ml60.drawableSize = CGSizeMake(round(w60 * scale60 * rs60), round(h60 * scale60 * rs60));
+            // Truncate like ANGLE does when it sizes the surface from
+            // bounds x contentsScale; rounding left drawable/MC 1 px off it.
+            ml60.drawableSize = CGSizeMake(floor(w60 * layer.contentsScale), floor(h60 * layer.contentsScale));
         };
         if ([NSThread isMainThread]) {
             align60();
@@ -2158,8 +2160,8 @@ gl_render_window_t* gl_init_context(gl_render_window_t *share) {
     // 宽高（读取已对齐原生 scale 的 layer，与 drawableSize 保持一致），否则 surface
     // 会按 1x1 创建，进世界后画面异常。其余渲染器从 layer 自行推断，传 NULL。
     const EGLint mobileGLSurfaceAttribs[] = {
-        EGL_WIDTH, (EGLint)MAX(1.0, round(layer.bounds.size.width * layer.contentsScale)),
-        EGL_HEIGHT, (EGLint)MAX(1.0, round(layer.bounds.size.height * layer.contentsScale)),
+        EGL_WIDTH, (EGLint)MAX(1.0, floor(layer.bounds.size.width * layer.contentsScale)),
+        EGL_HEIGHT, (EGLint)MAX(1.0, floor(layer.bounds.size.height * layer.contentsScale)),
         EGL_NONE
     };
     // 单次创建（无重试环）：原生 scale 对齐后 ANGLE 无论读 bounds×scale 还是

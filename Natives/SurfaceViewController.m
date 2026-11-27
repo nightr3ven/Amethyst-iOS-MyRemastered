@@ -1451,8 +1451,15 @@ static UIView *findSDL_uikitview(UIView *root);
 
     physicalWidth = roundf(self.surfaceView.frame.size.width * self.screenScale);
     physicalHeight = roundf(self.surfaceView.frame.size.height * self.screenScale);
-    windowWidth = roundf(physicalWidth * resolutionScale);
-    windowHeight = roundf(physicalHeight * resolutionScale);
+    // Must match the EGL surface ANGLE builds, which is bounds x contentsScale
+    // with the fraction cut off. Rounding here instead (75% on a 430 pt tall
+    // screen: 967.5 -> 968 vs ANGLE's 967) left MC one row taller than the
+    // surface, and the frame flickered between two vertical scales.
+    {
+        CALayer *l = self.surfaceView.layer;
+        windowWidth = (int)(l.bounds.size.width * l.contentsScale);
+        windowHeight = (int)(l.bounds.size.height * l.contentsScale);
+    }
     // 【iPhone X 1px 失配根治 —— "必须手动调一次分辨率才有画面"的成因】
     // 旧代码在此把奇数宽/高 -- 取偶（iPhone X: 375*3=1125 -> 1124）。
     // 但 ANGLE 建 EGL window surface 时**不读 drawableSize、也不理我们传的

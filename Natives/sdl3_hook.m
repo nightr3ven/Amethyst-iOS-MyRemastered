@@ -504,8 +504,8 @@ static bool ame_eglSurfacePixelSizeFromUIKit(int *outW, int *outH) {
     CGFloat scale = layer.contentsScale;
     CGSize bs = layer.bounds.size;
     if (scale > 0.0 && bs.width > 1.0 && bs.height > 1.0) {
-        *outW = (int)round(bs.width * scale);
-        *outH = (int)round(bs.height * scale);
+        *outW = (int)(bs.width * scale);   // truncated, as ANGLE sizes the surface
+        *outH = (int)(bs.height * scale);
         return true;
     }
     return ame_screenFallbackPixelSize(outW, outH);
